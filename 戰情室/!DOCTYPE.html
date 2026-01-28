@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>北城證券 隱藏報表戰情室</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 React 和 ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- 引入 Babel 用於解析 JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        /* 自定義動畫與滾動條樣式 */
+        body { background-color: #0f172a; color: white; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .animate-fadeIn { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- 這裡開始是主要的 React 程式碼 -->
+    <script type="text/babel" data-type="module">
+        import { 
+            BarChart3, TrendingUp, Users, Briefcase, Activity, Search, ExternalLink, 
+            PieChart, ArrowUpRight, Info, ClipboardList, Zap, BookOpen, GraduationCap, 
+            Target, ShieldCheck, Layers, Percent, Scale, Coins, LineChart, BarChart4, 
+            RotateCw, TrendingDown, DollarSign, Award, AlertTriangle, CalendarClock, Globe
+        } from 'https://esm.sh/lucide-react@0.263.1';
+
+        const { useState } = React;
+
+        const App = () => {
+            const [activeCategory, setActiveCategory] = useState('all');
+            const [stockCode, setStockCode] = useState('');
+
+            const handleSearch = (e) => {
+                e.preventDefault();
+                const cleanCode = stockCode.trim();
+                if (cleanCode) {
+                    window.open(`https://www.peicheng.com.tw/asp/stockquery/${cleanCode}.htm`, '_blank');
+                    setStockCode('');
+                }
+            };
+
+            const links = [
+                {
+                    id: 1,
+                    title: '籌碼集中度排行',
+                    category: 'chips',
+                    url: 'https://www.peicheng.com.tw/asp/main/report/report_r4all.html',
+                    description: '尋找主力鎖碼股的核心工具。重點觀察 5日 與 10日 集中度數據，數值越高代表主力吃貨越兇。',
+                    icon: <PieChart className="w-6 h-6 text-blue-400" />,
+                    tag: '必看首選'
+                },
+                {
+                    id: 2,
+                    title: '外資買賣超排行',
+                    category: 'institutional',
+                    url: 'https://www.peicheng.com.tw/asp/main/report/dream_report/%E5%A4%96%E8%B3%87%E8%B2%B7%E8%B3%A3%E8%B6%85%E6%8E%92%E8%A1%8C.htm',
+                    description: '觀察外資動向。區分「買超」與「賣超」，留意連續 3日 以上同向操作的個股，波段趨勢較強。',
+                    icon: <Briefcase className="w-6 h-6 text-emerald-400" />,
+                    tag: '趨勢指標'
+                },
+                {
+                    id: 3,
+                    title: '投信買賣超排行',
+                    category: 'institutional',
+                    url: 'https://www.peicheng.com.tw/asp/main/report/dream_report/%E6%8A%95%E4%BF%A1%E8%B2%B7%E8%B3%A3%E8%B6%85%E6%8E%92%E8%A1%8C.htm',
+                    description: '中小型股爆發力指標。投信連續買超通常暗示作帳行情，適合尋找短線飆股。',
+                    icon: <Users className="w-6 h-6 text-orange-400" />,
+                    tag: '作帳行情'
+                },
+                {
+                    id: 4,
+                    title: '自營商買賣超排行',
+                    category: 'institutional',
+                    url: 'https://www.peicheng.com.tw/asp/main/report/dream_report/%E8%87%AA%E7%87%9F%E5%95%86%E8%B2%B7%E8%B3%A3%E8%B6%85%E6%8E%92%E8%A1%8C.htm',
+                    description: '短線進出參考。自營商操作通常較短，適合搭配權證或極短線操作參考。',
+                    icon: <Activity className="w-6 h-6 text-purple-400" />,
+                    tag: '短線參考'
+                },
+                {
+                    id: 5,
+                    title: '個股夢幻報表查詢',
+                    category: 'analysis',
+                    url: 'https://www.peicheng.com.tw/asp/report/stockquery/show.asp',
+                    description: '最深入的個股健檢。輸入代碼查看「綜合評分」、「主力企圖」與「籌碼安定度」。',
+                    icon: <Search className="w-6 h-6 text-pink-400" />,
+                    tag: '深度健檢'
+                },
+                {
+                    id: 6,
+                    title: '日布林通道轉強股',
+                    category: 'tech',
+                    url: 'https://www.peicheng.com.tw/asp/main/report/BL.htm',
+                    description: '技術面篩選。找出股價突破布林通道上緣，且開口擴大的轉強個股。',
+                    icon: <TrendingUp className="w-6 h-6 text-yellow-400" />,
+                    tag: '技術突破'
+                },
+                {
+                    id: 9,
+                    title: 'Goodinfo! 營收創新高排行',
+                    category: 'fundamental',
+                    url: 'https://goodinfo.tw/tw/StockList.asp?SHEET=%E7%87%9F%E6%94%B6%E7%8B%80%E6%B3%81&RPT_TIME=%E6%9C%80%E6%96%B0%E8%B3%87%E6%96%99',
+                    description: '【外部資源】台股資料庫首選。這裡的營收數據更新最快，當券商資料還沒出來時，看這裡就對了。',
+                    icon: <Globe className="w-6 h-6 text-rose-500" />,
+                    tag: '🚀 外部資源 (最快)'
+                },
+                {
+                    id: 10,
+                    title: 'HiStock 嗨投資 (營收排行)',
+                    category: 'fundamental',
+                    url: 'https://histock.tw/stock/rank.aspx?p=rev',
+                    description: '【外部資源】介面清爽，快速列出「營收年增率」與「月增率」最強的個股清單。',
+                    icon: <Globe className="w-6 h-6 text-purple-500" />,
+                    tag: '🚀 外部資源 (UI優)'
+                },
+                {
+                    id: 7,
+                    title: '基本面績效排行 (EPS/ROE)',
+                    category: 'fundamental',
+                    url: 'https://www.peicheng.com.tw/asp/main/report/report_r1.html',
+                    description: '北城證券官方季報排行。注意：若遇財報空窗期（如1-3月），建議改看上方的外部營收資源。',
+                    icon: <ClipboardList className="w-6 h-6 text-cyan-400" />,
+                    tag: '官方季報'
+                }
+            ];
+
+            const knowledgeItems = [
+                {
+                    title: "綜合評分",
+                    icon: <Target className="w-8 h-8 text-pink-400" />,
+                    summary: "系統運算的總體檢分數，越高越好。",
+                    details: [
+                        "包含技術、基本、籌碼面共5項條件。",
+                        "5分以上及格，7分以上強勢。",
+                        "分數由低翻高代表轉強。"
+                    ]
+                },
+                {
+                    title: "券資比",
+                    icon: <ArrowUpRight className="w-8 h-8 text-red-400" />,
+                    summary: "判斷是否有「軋空」行情的關鍵。",
+                    details: [
+                        "公式：融券張數 / 融資張數。",
+                        "比值越大，越有機會出現軋空飆漲。",
+                        "通常超過30%即具備軋空條件。"
+                    ]
+                },
+                {
+                    title: "現金殖利率",
+                    icon: <Percent className="w-8 h-8 text-yellow-400" />,
+                    summary: "存股族最愛，安全報酬率。",
+                    details: [
+                        "公式：現金股利 / 股價。",
+                        "越高代表領的利息越多。",
+                        "需注意是否能填息。"
+                    ]
+                },
+                {
+                    title: "本益比 (PE)",
+                    icon: <Scale className="w-8 h-8 text-blue-400" />,
+                    summary: "判斷股價是便宜還是昂貴。",
+                    details: [
+                        "公式：股價 / EPS。",
+                        "低PE：股價相對便宜 (價值股)。",
+                        "高PE：市場給予高期待 (成長股)。"
+                    ]
+                },
+                {
+                    title: "股價淨值比 (PB)",
+                    icon: <Coins className="w-8 h-8 text-indigo-400" />,
+                    summary: "低於1代表跌破淨值。",
+                    details: [
+                        "公式：股價 / 每股淨值。",
+                        "小於1通常視為價值被低估。",
+                        "適合用來評估景氣循環股。"
+                    ]
+                },
+                {
+                    title: "機構預估 EPS",
+                    icon: <LineChart className="w-8 h-8 text-cyan-400" />,
+                    summary: "法人對未來的獲利共識。",
+                    details: [
+                        "外資投信對未來的獲利預估平均。",
+                        "預估值上修，股價易漲。",
+                        "是股價領先指標。"
+                    ]
+                },
+                {
+                    title: "主力企圖",
+                    icon: <Users className="w-8 h-8 text-orange-400" />,
+                    summary: "大戶買賣力道。",
+                    details: [
+                        "紅棒：主力積極買進。",
+                        "綠棒：主力調節出貨。",
+                        "柱狀體越長力道越強。"
+                    ]
+                },
+                {
+                    title: "布林通道",
+                    icon: <Layers className="w-8 h-8 text-purple-400" />,
+                    summary: "判斷突破與壓縮。",
+                    details: [
+                        "突破上軌+開口擴大：波段起漲。",
+                        "通道變窄：盤整蓄力中。",
+                        "跌破中軌：轉弱訊號。"
+                    ]
+                }
+            ];
+
+            const fundamentalTerms = [
+                {
+                    title: "ROE 排行",
+                    sub: "股東權益報酬率",
+                    desc: "巴菲特最愛指標。衡量公司拿股東的錢去賺錢的效率。數值越高，代表公司越會替股東賺錢。",
+                    icon: <Target className="w-5 h-5 text-rose-400" />
+                },
+                {
+                    title: "週轉率排行",
+                    sub: "經營效率指標",
+                    desc: "指資產或存貨的週轉速度。週轉率越高，代表公司產品賣得越快，或資產利用效率越好，沒有囤貨壓力。",
+                    icon: <RotateCw className="w-5 h-5 text-orange-400" />
+                },
+                {
+                    title: "高 MOM 排行",
+                    sub: "月營收成長率",
+                    desc: "Month On Month。反映「短期」的營收動能。適合尋找剛開始轉強、業績出現爆發性成長的黑馬股。",
+                    icon: <TrendingUp className="w-5 h-5 text-red-400" />
+                },
+                {
+                    title: "高 YOY 排行",
+                    sub: "年營收成長率",
+                    desc: "Year On Year。反映「長期」趨勢並消除淡旺季影響。YOY 連續正成長是成長股的基本條件。",
+                    icon: <BarChart4 className="w-5 h-5 text-emerald-400" />
+                },
+                {
+                    title: "高殖利率排行",
+                    sub: "現金股利回報",
+                    desc: "存股族首選。數值越高，代表股價相對便宜且配息大方。是空頭市場時的最佳防禦型指標。",
+                    icon: <Percent className="w-5 h-5 text-yellow-400" />
+                },
+                {
+                    title: "高配股排行",
+                    sub: "股票股利",
+                    desc: "公司發股票給股東。通常代表公司處於「成長期」，需要保留現金擴張，且看好未來獲利能稀釋股本。",
+                    icon: <Layers className="w-5 h-5 text-indigo-400" />
+                },
+                {
+                    title: "高 EPS 排行",
+                    sub: "每股盈餘",
+                    desc: "企業獲利的絕對數字。EPS 越高，代表每一股賺的錢越多，是支撐高股價的最基礎地基。",
+                    icon: <DollarSign className="w-5 h-5 text-blue-400" />
+                },
+                {
+                    title: "高毛利排行",
+                    sub: "產品競爭力",
+                    desc: "毛利率 = (營收-成本)/營收。高毛利代表產品有獨特性、技術門檻高，不怕同業殺價競爭。",
+                    icon: <Award className="w-5 h-5 text-purple-400" />
+                }
+            ];
+
+            const filteredLinks = activeCategory === 'all' 
+                ? links 
+                : links.filter(link => link.category === activeCategory);
+
+            return (
+                <div className="min-h-screen bg-slate-900 text-slate-100 font-sans p-4 md:p-8">
+                    <div className="max-w-6xl mx-auto">
+                        
+                        {/* Header */}
+                        <header className="mb-8 text-center md:text-left border-b border-slate-700 pb-6">
+                            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent mb-2">
+                                北城證券 隱藏報表戰情室
+                            </h1>
+                            <p className="text-slate-400">
+                                整合籌碼集中度、法人動向與技術分析的快速啟動中心
+                            </p>
+                        </header>
+
+                        {/* Quick Search Bar */}
+                        <div className="mb-10 bg-gradient-to-r from-slate-800 to-slate-800/50 p-6 rounded-2xl border border-blue-500/30 shadow-lg shadow-blue-900/10">
+                            <div className="flex flex-col md:flex-row items-center gap-4">
+                                <div className="flex items-center gap-3 text-blue-300 min-w-fit">
+                                    <Zap className="w-6 h-6" />
+                                    <span className="font-bold text-lg">夢幻報表直達車</span>
+                                </div>
+                                <form onSubmit={handleSearch} className="flex-1 w-full flex gap-2">
+                                    <input 
+                                        type="text" 
+                                        value={stockCode}
+                                        onChange={(e) => setStockCode(e.target.value)}
+                                        placeholder="輸入4碼股票代碼 (例如: 2330)" 
+                                        className="w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono tracking-wider"
+                                    />
+                                    <button 
+                                        type="submit"
+                                        className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors whitespace-nowrap shadow-md hover:shadow-blue-500/25"
+                                    >
+                                        立即分析
+                                    </button>
+                                </form>
+                            </div>
+                            <p className="text-slate-500 text-xs mt-3 ml-1 md:ml-[160px]">
+                                * 小撇步：輸入代碼後，系統將直接開啟該個股的深度分析頁面（夢幻報表），此頁面數據為每日更新。
+                            </p>
+                        </div>
+
+                        {/* Filter Tabs */}
+                        <div className="flex flex-wrap gap-2 mb-8 justify-center md:justify-start">
+                            {[
+                                { id: 'all', label: '全部顯示' },
+                                { id: 'chips', label: '籌碼集中' },
+                                { id: 'institutional', label: '法人動向' },
+                                { id: 'tech', label: '技術策略' },
+                                { id: 'fundamental', label: '基本面' },
+                                { id: 'knowledge', label: '指標小百科', icon: <GraduationCap size={16} className="inline mr-1" /> }
+                            ].map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveCategory(tab.id)}
+                                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 flex items-center ${
+                                        activeCategory === tab.id
+                                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25'
+                                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                    }`}
+                                >
+                                    {tab.icon}
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Main Content Area */}
+                        {activeCategory === 'knowledge' ? (
+                            /* Knowledge Base Page */
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fadeIn">
+                                <div className="md:col-span-2 bg-gradient-to-r from-blue-900/30 to-purple-900/30 p-6 rounded-xl border border-blue-500/20 mb-2">
+                                    <div className="flex items-center gap-3 mb-2 text-blue-300">
+                                        <BookOpen className="w-6 h-6" />
+                                        <h2 className="text-2xl font-bold">夢幻報表解讀指南</h2>
+                                    </div>
+                                    <p className="text-slate-300">
+                                        這裡整理了北城證券報表中常見的專業術語，幫助您快速看懂「綜合評分」與「財務數據」背後的意義。
+                                    </p>
+                                </div>
+                                {knowledgeItems.map((item, index) => (
+                                    <div key={index} className="bg-slate-800 rounded-xl p-6 border border-slate-700 hover:border-pink-500/30 transition-all shadow-lg">
+                                        <div className="flex items-start gap-4 mb-4">
+                                            <div className="p-3 bg-slate-900 rounded-lg shadow-inner">
+                                                {item.icon}
+                                            </div>
+                                            <div>
+                                                <h3 className="text-xl font-bold text-white mb-1">{item.title}</h3>
+                                                <p className="text-pink-300 font-medium text-sm">{item.summary}</p>
+                                            </div>
+                                        </div>
+                                        <ul className="space-y-2">
+                                            {item.details.map((detail, idx) => (
+                                                <li key={idx} className="flex items-start gap-2 text-slate-400 text-sm">
+                                                    <span className="w-1.5 h-1.5 bg-slate-600 rounded-full mt-1.5 flex-shrink-0" />
+                                                    <span>{detail}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            /* Link Grid & Fundamental Special Section */
+                            <div className="space-y-12">
+                                
+                                {/* 財報空窗期提示 - 僅在基本面或全部類別顯示 */}
+                                {(activeCategory === 'fundamental' || activeCategory === 'all') && (
+                                    <div className="bg-amber-900/20 border border-amber-600/30 p-4 rounded-xl flex items-start gap-3">
+                                        <CalendarClock className="w-6 h-6 text-amber-500 flex-shrink-0 mt-1" />
+                                        <div>
+                                            <h3 className="text-amber-400 font-bold text-sm mb-1">關於「最新數據」的說明</h3>
+                                            <p className="text-slate-300 text-xs leading-relaxed">
+                                                官方季報資料若停在 11 月屬正常現象（因 Q4 財報尚未出爐）。<br/>
+                                                若要看最新的 <span className="text-white font-bold">12月營收</span>，請點選下方標示為 <span className="text-rose-400 font-bold">Goodinfo</span> 或 <span className="text-purple-400 font-bold">HiStock</span> 的外部資源，它們提供台股最即時的營收更新。
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Standard Links */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {filteredLinks.map((link) => (
+                                        <div 
+                                            key={link.id}
+                                            className={`group rounded-xl p-6 border transition-all duration-300 hover:-translate-y-1 shadow-xl relative overflow-hidden ${
+                                                link.tag?.includes('外部資源') 
+                                                ? 'bg-slate-800/80 border-rose-500/30 hover:border-rose-500 hover:bg-slate-800' 
+                                                : 'bg-slate-800 border-slate-700 hover:border-blue-500/50 hover:bg-slate-800/80'
+                                            }`}
+                                        >
+                                            {/* External Highlight Effect */}
+                                            {link.tag?.includes('外部資源') && (
+                                                <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-rose-500/20 to-transparent rounded-bl-full pointer-events-none" />
+                                            )}
+
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div className="p-3 bg-slate-900 rounded-lg group-hover:scale-110 transition-transform duration-300">
+                                                    {link.icon}
+                                                </div>
+                                                {link.tag && (
+                                                    <span className={`px-2 py-1 text-xs rounded border ${
+                                                        link.tag.includes('外部資源')
+                                                        ? 'bg-rose-900/30 text-rose-300 border-rose-800 font-bold animate-pulse-slow'
+                                                        : link.tag === '價值投資' || link.tag === '官方季報'
+                                                        ? 'bg-cyan-900/30 text-cyan-300 border-cyan-800' 
+                                                        : 'bg-slate-700 text-blue-300 border-slate-600'
+                                                    }`}>
+                                                        {link.tag}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            
+                                            <h3 className="text-xl font-bold text-white mb-2 group-hover:text-blue-400 transition-colors">
+                                                {link.title}
+                                            </h3>
+                                            
+                                            <p className="text-slate-400 text-sm mb-6 leading-relaxed h-16 overflow-hidden">
+                                                {link.description}
+                                            </p>
+                                            
+                                            <a 
+                                                href={link.url} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className={`flex items-center justify-center w-full py-3 text-white rounded-lg font-medium transition-colors gap-2 ${
+                                                    link.tag?.includes('外部資源')
+                                                    ? 'bg-rose-600 hover:bg-rose-500'
+                                                    : 'bg-blue-600 hover:bg-blue-500'
+                                                }`}
+                                            >
+                                                <span>開啟報表</span>
+                                                <ExternalLink size={16} />
+                                            </a>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Special Section for Fundamental Analysis */}
+                                {activeCategory === 'fundamental' && (
+                                    <div className="animate-fadeIn">
+                                        <div className="flex items-center gap-2 mb-6 border-b border-slate-700 pb-2">
+                                            <ClipboardList className="w-6 h-6 text-cyan-400" />
+                                            <h2 className="text-xl font-bold text-cyan-400">基本面關鍵指標解析</h2>
+                                            <span className="text-slate-500 text-sm ml-2">- 價值投資人必備辭典</span>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            {fundamentalTerms.map((term, index) => (
+                                                <div key={index} className="bg-slate-800/60 p-5 rounded-lg border border-slate-700/50 hover:bg-slate-800 transition-colors">
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        {term.icon}
+                                                        <h3 className="font-bold text-white text-base">{term.title}</h3>
+                                                    </div>
+                                                    <p className="text-xs text-cyan-300 mb-2 font-medium">{term.sub}</p>
+                                                    <p className="text-slate-400 text-sm leading-relaxed">
+                                                        {term.desc}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Footer Info */}
+                        <div className="mt-12 bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
+                            <div className="flex items-center gap-2 mb-4 text-emerald-400">
+                                <Info size={20} />
+                                <h3 className="font-bold">分析師建議流程</h3>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-300">
+                                <div className="bg-slate-900/50 p-4 rounded-lg">
+                                    <span className="text-blue-400 font-bold block mb-1">Step 1. 掃描</span>
+                                    使用 <span className="text-white">籌碼集中度排行</span>，找出 5日/10日 籌碼異常集中的潛力股。
+                                </div>
+                                <div className="bg-slate-900/50 p-4 rounded-lg">
+                                    <span className="text-blue-400 font-bold block mb-1">Step 2. 確認</span>
+                                    檢查 <span className="text-white">外資/投信排行</span>，確認法人是否同步買超，這叫「土洋合作」。
+                                </div>
+                                <div className="bg-slate-900/50 p-4 rounded-lg">
+                                    <span className="text-blue-400 font-bold block mb-1">Step 3. 診斷</span>
+                                    使用 <span className="text-white">夢幻報表直達車</span> 輸入代碼，若不懂術語可切換至 <span className="text-white">指標小百科</span>。
+                                </div>
+                            </div>
+                        </div>
+
+                        <footer className="mt-12 text-center text-slate-500 text-sm">
+                            <p>此頁面為連結整合工具，所有數據來源皆為北城證券官方網站。</p>
+                        </footer>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
