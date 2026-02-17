@@ -1,0 +1,1855 @@
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { 
+  BarChart3, TrendingUp, Users, Briefcase, Activity, Search, ExternalLink, 
+  PieChart, ArrowUpRight, Info, ClipboardList, Zap, BookOpen, GraduationCap, 
+  Target, ShieldCheck, Layers, Percent, Scale, Coins, LineChart, BarChart4, 
+  RotateCw, TrendingDown, DollarSign, Award, AlertTriangle, CalendarClock, Globe,
+  Table, Newspaper, Megaphone, ArrowLeftRight, Signal, Banknote, Triangle,
+  Sparkles, Bot, Send, MessageSquare, RefreshCw, Star, MapPin, SlidersHorizontal,
+  XCircle, LayoutDashboard, ChevronDown, CheckCircle2, MonitorPlay, Maximize2,
+  CandlestickChart, MousePointerClick, Youtube, Clapperboard, PlayCircle,
+  Trophy, Flame, Plus, Trash2, ListChecks, Gauge,
+  Settings, Download, Upload, Copy, Clock, CalendarDays,
+  Book, ArrowRight, Network, Radar, Cpu, CircuitBoard, Server, Car, Map as MapIcon, 
+  Factory, BatteryCharging, Monitor, Layers2, Paperclip, Image as ImageIcon,
+  Crosshair, ShieldAlert, Microscope, ThermometerSun, Loader2, FileSearch, Link as LinkIcon,
+  Filter, Play, BarChart2, CheckSquare, Radio, ScanLine, Sigma,
+  Sliders, RefreshCcw, Binary, Disc, Hash, Zap as ZapIcon,
+  CloudLightning, Droplets, Wind, MoveRight
+} from 'lucide-react';
+
+// ====================================================================================
+//  GLOBAL STYLES (Injected Component)
+// ====================================================================================
+
+const GlobalStyles = () => (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+    
+    body { font-family: 'Noto Sans TC', sans-serif; background-color: #0f172a; color: #f8fafc; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    
+    .animate-fadeIn { animation: fadeIn 0.5s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+    .btn-neon-breathing { animation: neonPulse 3s infinite; }
+    @keyframes neonPulse { 0%, 100% { box-shadow: 0 0 5px rgba(244, 63, 94, 0.2), 0 0 10px rgba(244, 63, 94, 0.2); } 50% { box-shadow: 0 0 10px rgba(244, 63, 94, 0.5), 0 0 20px rgba(244, 63, 94, 0.3); } }
+
+    .dashboard-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    
+    .thermometer-gradient { background: linear-gradient(90deg, #22c55e 0%, #eab308 50%, #ef4444 100%); }
+    
+    /* Sector Wheel Quadrants */
+    .sector-quadrant { transition: all 0.3s ease; }
+    .sector-quadrant:hover { filter: brightness(1.1); transform: scale(1.02); }
+  `}</style>
+);
+
+// ====================================================================================
+//  GEMINI API CONFIGURATION
+// ====================================================================================
+
+// ⚠️ 資安提醒：若要部署到公開網路 (Public URL)，請務必到 Google Cloud Console 設定 API Key 限制 (HTTP Referrer)，
+// 限定只有您的網域可以使用此 Key，避免額度被他人盜用。
+const apiKey = "AIzaSyABQDF59xBULhH7guwl3E4Dvt4i7FRg9ng"; 
+
+// 輔助函式：強健的 JSON 解析器 (v4.0 終極修復版)
+const safeParseJSON = (text) => {
+    try {
+        if (!text) return null;
+        
+        // 優先嘗試提取 Markdown JSON區塊
+        const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+        if (jsonBlockMatch && jsonBlockMatch[1]) {
+            try {
+                return JSON.parse(jsonBlockMatch[1]);
+            } catch (e) {
+                // 如果區塊內解析失敗，繼續往下嘗試
+            }
+        }
+
+        // 搜尋最外層的 {} 或 []
+        const firstOpenBrace = text.indexOf('{');
+        const firstOpenBracket = text.indexOf('[');
+        let start = -1;
+        
+        // 決定是物件還是陣列開始得比較早
+        if (firstOpenBrace !== -1 && firstOpenBracket !== -1) {
+            start = Math.min(firstOpenBrace, firstOpenBracket);
+        } else {
+            start = firstOpenBrace !== -1 ? firstOpenBrace : firstOpenBracket;
+        }
+
+        if (start === -1) return null; // 找不到任何 JSON 結構
+
+        // 尋找對應的結束符號
+        const lastCloseBrace = text.lastIndexOf('}');
+        const lastCloseBracket = text.lastIndexOf(']');
+        let end = -1;
+
+        if (lastCloseBrace !== -1 && lastCloseBracket !== -1) {
+            end = Math.max(lastCloseBrace, lastCloseBracket);
+        } else {
+            end = lastCloseBrace !== -1 ? lastCloseBrace : lastCloseBracket;
+        }
+
+        if (end > start) {
+            const potentialJson = text.substring(start, end + 1);
+            return JSON.parse(potentialJson);
+        }
+        
+        return null;
+    } catch (e) {
+        console.error("JSON Parsing Failed:", e);
+        return null;
+    }
+};
+
+async function callGeminiAPI(prompt, images = [], systemPrompt = null, useSearch = false, jsonMode = false) {
+    const models = ["gemini-2.5-flash-preview-09-2025", "gemini-2.0-flash-exp"]; 
+    const maxRetries = 3;
+    const parts = [{ text: prompt }];
+    if (images && Array.isArray(images) && images.length > 0) {
+        images.forEach(imageBase64 => {
+            if (typeof imageBase64 === 'string' && imageBase64.includes(',')) {
+                const mimeType = imageBase64.substring(5, imageBase64.indexOf(';'));
+                const data = imageBase64.substring(imageBase64.indexOf(',') + 1);
+                parts.push({ inlineData: { mimeType: mimeType, data: data } });
+            }
+        });
+    }
+    const defaultSystemPrompt = "你是一位精通美股與台股連動關係的資深夜盤分析師 JAMES。";
+    const payload = {
+        contents: [{ parts: parts }],
+        systemInstruction: { parts: [{ text: systemPrompt || defaultSystemPrompt }] }
+    };
+    if (useSearch) { payload.tools = [{ google_search: {} }]; }
+    if (jsonMode && !useSearch) { payload.generationConfig = { responseMimeType: "application/json" }; }
+
+    let lastError = null;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        for (const model of models) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+            try {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (response.status === 429 || response.status === 503) {
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+                    continue;
+                }
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                if (!text) throw new Error("API 回傳內容為空");
+                return text;
+            } catch (error) { lastError = error; }
+        }
+    }
+    throw lastError || new Error("All AI models failed to respond.");
+}
+
+// ====================================================================================
+//  DATA CONSTANTS
+// ====================================================================================
+
+let GLOBAL_NEWS_CACHE = { data: null, timestamp: 0, CACHE_DURATION: 5 * 60 * 1000 };
+const INITIAL_THEME_DATABASE = {
+    'ai_server': {
+        id: 'ai_server', name: 'AI 伺服器 (示範)', desc: 'NVIDIA GB200 出貨在即，供應鏈營收爆發', hypeScore: 95, stage: '主升段', catalyst: 'CSP 大廠資本支出增加',
+        segmentAnalysis: {
+            upstream: { heat: 95, status: '🔥 缺貨', desc: 'GPU 與 CoWoS', stocks: [{ code: '2330', name: '台積電', role: '晶圓代工', isLeader: true, flow: '外資買超', note: '先進封裝產能滿載' }] },
+            midstream: { heat: 88, status: '📈 強勢', desc: '散熱與滑軌', stocks: [{ code: '3017', name: '奇鋐', role: '散熱', isLeader: true, flow: '投信買超', note: '水冷板出貨' }] },
+            downstream: { heat: 92, status: '⚡ 爆發', desc: '組裝代工', stocks: [{ code: '2317', name: '鴻海', role: '組裝', isLeader: true, flow: '主力鎖碼', note: 'GB200 最大份額' }] }
+        }
+    }
+};
+const STATIC_NEWS_FALLBACK = [{ id: 1, title: "正在連線 Google Search 掃描最新題材...", tag: "loading", time: "掃描中...", reliability: "high", source: "System" }];
+const KNOWLEDGE_ITEMS = [
+    { title: "綜合評分", icon: <Target className="w-8 h-8 text-pink-400" />, summary: "系統運算的總體檢分數，越高越好。", details: ["包含技術、基本、籌碼面共5項條件。", "5分以上及格，7分以上強勢。", "分數由低翻高代表轉強。"] },
+    { title: "融資餘額 (資餘)", icon: <Users className="w-8 h-8 text-blue-400" />, summary: "散戶信心指標 (借錢買股)。", details: ["資餘增加：散戶看多，籌碼趨於凌亂(不穩定)。", "資餘減少：散戶離場或停損，有助籌碼沉澱。", "主力常在融資大減(斷頭)時進場撿便宜。"] },
+    { title: "融券餘額 (券餘)", icon: <Scale className="w-8 h-8 text-indigo-400" />, summary: "空方燃料指標 (借券賣出)。", details: ["券餘增加：看空者變多，這也是未來的買盤(回補)。", "券餘減少：空單認輸回補，或獲利了結。", "券餘在高檔不退，股價卻漲，易發生「軋空」。"] },
+    { title: "券資比", icon: <ArrowUpRight className="w-8 h-8 text-red-400" />, summary: "判斷是否有「軋空」行情的關鍵。", details: ["公式：融券餘額 / 融資餘額 X 100%。", "比值越高，代表空單比例越高。", "通常超過 30% 即具備軋空條件。"] },
+    { title: "現金殖利率", icon: <Percent className="w-8 h-8 text-yellow-400" />, summary: "存股族最愛，安全報酬率。", details: ["公式：現金股利 / 股價。", "越高代表領的利息越多。", "需注意是否能填息。"] },
+    { title: "本益比 (PE)", icon: <Scale className="w-8 h-8 text-blue-400" />, summary: "判斷股價是便宜還是昂貴。", details: ["公式：股價 / EPS。", "低PE：股價相對便宜 (價值股)。", "高PE：市場給予高期待 (成長股)。"] },
+    { title: "股價淨值比 (PB)", icon: <Coins className="w-8 h-8 text-indigo-400" />, summary: "低於1代表跌破淨值。", details: ["公式：股價 / 每股淨值。", "小於1通常視為價值被低估。", "適合用來評估景氣循環股。"] },
+    { title: "機構預估 EPS", icon: <LineChart className="w-8 h-8 text-cyan-400" />, summary: "法人對未來的獲利共識。", details: ["外資投信對未來的獲利預估平均。", "預估值上修，股價易漲。", "是股價領先指標。"] },
+    { title: "主力企圖", icon: <Users className="w-8 h-8 text-orange-400" />, summary: "大戶買賣力道。", details: ["紅棒：主力積極買進。", "綠棒：主力調節出貨。", "柱狀體越長力道越強。"] },
+    { title: "布林通道", icon: <Layers className="w-8 h-8 text-purple-400" />, summary: "判斷突破與壓縮。", details: ["突破上軌+開口擴大：波段起漲。", "通道變窄：盤整蓄力中。", "跌破中軌：轉弱訊號。"] }
+];
+const FUNDAMENTAL_TERMS = [
+    { title: "ROE 排行", sub: "股東權益報酬率", desc: "巴菲特最愛指標。衡量公司拿股東的錢去賺錢的效率。數值越高，代表公司越會替股東賺錢。", icon: <Target className="w-6 h-6 text-rose-400" /> },
+    { title: "週轉率排行", sub: "經營效率指標", desc: "指資產或存貨的週轉速度。週轉率越高，代表公司產品賣得越快，或資產利用效率越好，沒有囤貨壓力。", icon: <RotateCw className="w-6 h-6 text-rose-400" /> },
+    { title: "高 MOM 排行", sub: "月營收成長率", desc: "Month On Month。反映「短期」的營收動能。適合尋找剛開始轉強、業績出現爆發性成長的黑馬股。", icon: <TrendingUp className="w-6 h-6 text-rose-400" /> },
+    { title: "高 YOY 排行", sub: "年營收成長率", desc: "Year On Year。反映「長期」趨勢並消除淡旺季影響。YOY 連續正成長是成長股的基本條件。", icon: <BarChart4 className="w-6 h-6 text-rose-400" /> },
+    { title: "高殖利率排行", sub: "現金股利回報", desc: "存股族首選。數值越高，代表股價相對便宜且配息大方。是空頭市場時的最佳防禦型指標。", icon: <Percent className="w-6 h-6 text-rose-400" /> },
+    { title: "高配股排行", sub: "股票股利", desc: "公司發股票給股東。通常代表公司處於「成長期」，需要保留現金擴張，且看好未來獲利能稀釋股本。", icon: <Layers className="w-6 h-6 text-rose-400" /> },
+    { title: "高 EPS 排行", sub: "每股盈餘", desc: "企業獲利的絕對數字。EPS 越高，代表每一股賺的錢越多，是支撐高股價的最基礎地基。", icon: <DollarSign className="w-6 h-6 text-rose-400" /> },
+    { title: "高毛利排行", sub: "產品競爭力", desc: "毛利率 = (營收-成本)/營收。高毛利代表產品有獨特性、技術門檻高，不怕同業殺價競爭。", icon: <Award className="w-6 h-6 text-rose-400" /> }
+];
+const STOCK_NAMES = {
+    '0050': '元大台灣50', '2330': '台積電', '2317': '鴻海', '2454': '聯發科', '2382': '廣達', '3231': '緯創', '3008': '大立光', '2603': '長榮', '4991': '環宇-KY', '6451': '訊芯-KY', '6706': '惠特', '6830': '汎銓', '8111': '立碁', '3234': '光環', '4956': '光鋐', '3081': '聯亞', '3363': '上詮', '3450': '聯鈞', '3508': '位速', '3576': '聯合再生', '6189': '豐藝', '2464': '盟立', '3615': '安可', '3055': '蔚華科', '4960': '誠美材', '3131': '弘塑', '3583': '辛耘', '6187': '萬潤', '6640': '均華', '3711': '日月光投控', '2449': '京元電', '5347': '世界先進', '6770': '力積電', '2303': '聯電', '3017': '奇鋐', '3324': '雙鴻', '8996': '高力', '6230': '超眾', '3653': '健策', '2009': '第一銅', '1513': '中興電', '1519': '華城', '1503': '士電'
+};
+const STOCK_THEMES = {
+    '2330': '半導體/晶圓', '2454': '半導體/IC', '2303': '半導體/晶圓', '3711': '半導體/封測', '3017': 'AI/散熱', '3324': 'AI/散熱', '2382': 'AI/伺服器', '2317': 'AI/伺服器'
+};
+const LINKS_DATA = [
+    { id: 107, title: '台股成交量排行', category: 'market_info', url: 'https://www.wantgoo.com/stock/ranking/volume?market=Listed', description: '觀察市場熱錢流向。成交爆量代表市場關注度高，通常波動較大，適合短線當沖參考。', icon: <BarChart3 className="w-6 h-6 text-rose-400" />, tag: '熱錢流向' },
+    { id: 101, title: '融資券增減變化表', category: 'market_info', url: 'https://www.peicheng.com.tw/asp/main/report/report28new.htm', description: '多空風向球。資增券增代表行情熱絡，資減券增可能軋空，資增券減則需小心主力出貨。', icon: <ArrowLeftRight className="w-6 h-6 text-indigo-400" />, tag: '籌碼變化' },
+    { id: 106, title: '盤勢分析(日報)', category: 'market_info', url: 'https://www.peicheng.com.tw/asp/main/report/newreport.htm', description: '每日盤後解盤。掌握大盤多空方向、關鍵支撐壓力與明日觀盤重點。', icon: <LineChart className="w-6 h-6 text-cyan-400" />, tag: '每日必讀' },
+    { id: 105, title: '市場重要訊息 (週報)', category: 'market_info', url: 'https://www.peicheng.com.tw/wreport.htm', description: '北城官方觀點。每週整理的市場重大訊息與未來一週觀盤重點分析。', icon: <Newspaper className="w-6 h-6 text-orange-400" />, tag: '官方觀點' },
+    { id: 102, title: '資券分配查詢', category: 'market_info', url: 'https://www.peicheng.com.tw/asp/provide/provide_list.asp', description: '融券放空必查。確認個股是否有足夠的融券配額，避免空單無法成交。', icon: <Scale className="w-6 h-6 text-slate-400" />, tag: '空單必備' },
+    { id: 103, title: '多方選股', category: 'chips', url: 'https://www.peicheng.com.tw/asp/main/report/report_r3.html', description: '資金流向儀表板。觀察上個月哪些產業族群表現最強勢，作為本月選股方向。', icon: <Triangle className="w-6 h-6 text-red-500 fill-red-500/20" />, tag: '產業趨勢' },
+    { id: 104, title: '空方選股', category: 'chips', url: 'https://www.peicheng.com.tw/asp/main/report/report_r2.html', description: '基本面快篩。快速檢視上個月營收大幅衰退的弱勢股，尋找潛在做空機會。', icon: <Triangle className="w-6 h-6 text-green-500 rotate-180 fill-green-500/20" />, tag: '空軍來襲' },
+    { id: 1, title: '籌碼集中度排行', category: 'chips', url: 'https://www.peicheng.com.tw/asp/main/report/report_r4all.html', description: '尋找主力鎖碼股的核心工具。重點觀察 5日 與 10日 集中度數據，數值越高代表主力吃貨越兇。', icon: <PieChart className="w-6 h-6 text-blue-400" />, tag: '必看首選' },
+    { id: 108, title: '券商分點買賣日報', category: 'chips', url: 'https://www.wantgoo.com/stock/major-investors/broker-buy-sell-rank', description: '主力足跡追蹤。查詢每日特定券商分點的買賣超明細，找出神祕大戶都在哪裡下單。', icon: <MapPin className="w-6 h-6 text-fuchsia-400" />, tag: '大戶行蹤' },
+    { id: 2, title: '外資買賣超排行', category: 'institutional', url: 'https://www.peicheng.com.tw/asp/main/report/dream_report/%E5%A4%96%E8%B3%87%E8%B2%B7%E8%B3%A3%E8%B6%85%E6%8E%92%E8%A1%8C.htm', description: '觀察外資動向。區分「買超」與「賣超」，留意連續 3日 以上同向操作的個股，波段趨勢較強。', icon: <Briefcase className="w-6 h-6 text-emerald-400" />, tag: '趨勢指標' },
+    { id: 3, title: '投信買賣超排行', category: 'institutional', url: 'https://www.peicheng.com.tw/asp/main/report/dream_report/%E6%8A%95%E4%BF%A1%E8%B2%B7%E8%B3%A3%E8%B6%85%E6%8E%92%E8%A1%8C.htm', description: '中小型股爆發力指標。投信連續買超通常暗示作帳行情，適合尋找短線飆股。', icon: <Users className="w-6 h-6 text-orange-400" />, tag: '作帳行情' },
+    { id: 4, title: '自營商買賣超排行', category: 'institutional', url: 'https://www.peicheng.com.tw/asp/main/report/dream_report/%E8%87%AA%E7%87%9F%E5%95%86%E8%B2%B7%E8%B3%A3%E8%B6%85%E6%8E%92%E8%A1%8C.htm', description: '短線進出參考。自營商操作通常較短，適合搭配權證或極短線操作參考。', icon: <Activity className="w-6 h-6 text-purple-400" />, tag: '短線參考' },
+    { id: 5, title: '個股夢幻報表查詢', category: 'analysis', url: 'https://www.peicheng.com.tw/asp/report/stockquery/show.asp', description: '最深入的個股健檢。輸入代碼查看「綜合評分」、「主力企圖」與「籌碼安定度」。', icon: <Search className="w-6 h-6 text-pink-400" />, tag: '深度健檢' },
+    { id: 6, title: '日布林通道轉強股', category: 'tech', url: 'https://www.peicheng.com.tw/asp/main/report/BL.htm', description: '技術面篩選。找出股價突破布林通道上緣，且開口擴大的轉強個股。', icon: <TrendingUp className="w-6 h-6 text-yellow-400" />, tag: '技術突破' },
+    { id: 109, title: '均線智慧選股', category: 'tech', url: 'https://goodinfo.tw/tw/StockList.asp?SHEET=%E5%9D%87%E7%B7%9A%E4%BD%8D%E7%BD%AE&MARKET_CAT=%E6%99%BA%E6%85%A7%E9%81%B8%E8%82%A1&INDUSTRY_CAT=%E6%89%80%E6%9C%89%E5%9D%87%E7%B7%9A%E5%A4%9A%E9%A0%AD%E6%8E%92%E5%88%97', description: '【外部資源】一鍵篩選出所有均線呈現「多頭排列」的強勢股。這是波段操作最基礎也最有效的訊號。', icon: <LineChart className="w-6 h-6 text-amber-500" />, tag: '多頭排列' },
+    { id: 110, title: 'TradingView 股票篩選器', category: 'tech', url: 'https://tw.tradingview.com/screener/', description: '【外部資源】全球最強大的圖表篩選工具。提供數百種技術指標與基本面數據，適合自定義策略的高階玩家。', icon: <SlidersHorizontal className="w-6 h-6 text-blue-500" />, tag: '高階篩選' },
+    { id: 9, title: 'Goodinfo! 營收創新高排行', category: 'fundamental', url: 'https://goodinfo.tw/tw/StockList.asp?SHEET=%E7%87%9F%E6%94%B6%E7%8B%80%E6%B3%81&RPT_TIME=%E6%9C%80%E6%96%B0%E8%B3%87%E6%96%99', description: '【外部資源】台股資料庫首選。這裡的營收數據更新最快，當券商資料還沒出來時，看這裡就對了。', icon: <Globe className="w-6 h-6 text-rose-500" />, tag: '🚀 外部資源 (最快)' },
+    { id: 7, title: '基本面績效排行 (EPS/ROE)', category: 'fundamental', url: 'https://www.peicheng.com.tw/asp/main/report/report_r1.html', description: '北城證券官方季報排行。注意：若遇財報空窗期（如1-3月），建議改看上方的外部營收資源。', icon: <ClipboardList className="w-6 h-6 text-cyan-400" />, tag: '官方季報' }
+];
+
+// ====================================================================================
+//  COMPONENTS
+// ====================================================================================
+
+const MarketSentimentGauge = () => {
+    // 預設的初始狀態
+    const DEFAULT_INDICATORS = [
+        { name: "台指期外資淨未平倉", value: "載入中...", status: "---", color: "text-slate-400", desc: "正在連線交易所數據...", icon: <Briefcase className="w-5 h-5"/> },
+        { name: "大盤騰落線 (ADL)", value: "---", status: "---", color: "text-slate-400", desc: "正在掃描市場廣度...", icon: <TrendingDown className="w-5 h-5"/> },
+        { name: "P/C Ratio (成交量)", value: "---", status: "---", color: "text-slate-400", desc: "正在計算選擇權支撐...", icon: <Scale className="w-5 h-5"/> },
+        { name: "台股恐慌指數 (VIX)", value: "---", status: "---", color: "text-slate-400", desc: "正在評估市場風險...", icon: <CloudLightning className="w-5 h-5"/> },
+    ];
+
+    const [indicators, setIndicators] = useState(DEFAULT_INDICATORS);
+    const [overallScore, setOverallScore] = useState(50);
+    const [isLoading, setIsLoading] = useState(false);
+    const [lastUpdated, setLastUpdated] = useState(null);
+    const [analysisText, setAnalysisText] = useState("等待數據更新中...");
+    
+    // 預設靜態資料 (作為 Placeholder，直到 AI 更新覆蓋)
+    const [sectors, setSectors] = useState([
+        { name: "等待更新...", stage: "leading", change: "---", trend: "flat", note: "點擊上方更新按鈕" },
+        { name: "等待更新...", stage: "weakening", change: "---", trend: "flat", note: "點擊上方更新按鈕" },
+        { name: "等待更新...", stage: "lagging", change: "---", trend: "flat", note: "點擊上方更新按鈕" },
+        { name: "等待更新...", stage: "improving", change: "---", trend: "flat", note: "點擊上方更新按鈕" },
+    ]);
+
+    const quadrants = {
+        leading: { title: "🔥 領先 (Leading)", color: "bg-red-500/20 border-red-500/50 text-red-200", icon: <Flame className="w-4 h-4 text-red-400"/> },
+        weakening: { title: "📉 獲利回吐 (Weakening)", color: "bg-yellow-500/20 border-yellow-500/50 text-yellow-200", icon: <TrendingDown className="w-4 h-4 text-yellow-400"/> },
+        lagging: { title: "❄️ 落後 (Lagging)", color: "bg-blue-500/20 border-blue-500/50 text-blue-200", icon: <CloudLightning className="w-4 h-4 text-blue-400"/> },
+        improving: { title: "🚀 改善 (Improving)", color: "bg-emerald-500/20 border-emerald-500/50 text-emerald-200", icon: <TrendingUp className="w-4 h-4 text-emerald-400"/> },
+    };
+
+    const fetchLiveSentiment = async () => {
+        setIsLoading(true);
+        const timeString = new Date().toLocaleString('zh-TW');
+        
+        // 這是給 AI 的指令，要求它去 Google 搜尋最新的真實數據，包含【大盤籌碼】與【資金輪動】
+        const prompt = `現在時間是 ${timeString}。請啟動【Google Search 廣域搜尋模式】，搜尋「今日」或「最近一個交易日」的台股大盤數據與類股表現。
+        
+        任務一：找出大盤籌碼數據 (若今日數據未出，用昨日收盤)：
+        1. 外資台指期淨未平倉口數。
+        2. 台股 P/C Ratio。
+        3. 台指期 VIX (恐慌指數)。
+        4. 市場騰落狀態 (漲跌家數)。
+
+        任務二：分析今日【資金輪動 (Sector Rotation)】狀態，將類股歸類至以下四個象限 (總共至少列出 6-8 個代表性族群)：
+        - **leading (領先)**: 今日漲幅最強、資金最集中的主流族群 (如 半導體、AI、航運 等)。
+        - **weakening (獲利回吐)**: 近期強勢但今日轉弱、開高走低或漲多拉回的族群。
+        - **lagging (落後)**: 今日跌幅最重、遭資金提款或持續破底的弱勢族群。
+        - **improving (改善)**: 低檔反彈、剛出量轉強或有利多點火的族群。
+
+        並計算一個 0-100 的「多空綜合評分」。
+
+        【極重要：輸出格式】
+        請直接回傳一個標準的 JSON Object，不要 Markdown。
+        **嚴格規範：所有數值 (change, value) 請只回傳「數字%」或「數值」，絕對不要加上「(估)」、「(est)」或「約」等模糊文字，保持版面乾淨。**
+        
+        格式如下：
+        {
+            "score": 45,
+            "summary": "一句話簡短解讀 (例如：外資空單未退，資金輪動至傳產避險)",
+            "indicators": [
+                { "name": "台指期外資淨未平倉", "value": "-12500 口", "status": "偏空", "desc": "外資避險情緒濃厚" },
+                { "name": "大盤騰落線 (ADL)", "value": "漲少跌多", "status": "偏空", "desc": "中小型股賣壓沉重" },
+                { "name": "P/C Ratio", "value": "95.2%", "status": "中性", "desc": "支撐力道普通" },
+                { "name": "台股恐慌指數 (VIX)", "value": "14.2", "status": "安穩", "desc": "市場情緒尚屬穩定" }
+            ],
+            "sectors": [
+                { "name": "半導體", "stage": "leading", "change": "+1.5%", "trend": "up", "note": "台積電領軍上攻" },
+                { "name": "航運", "stage": "improving", "change": "+2.1%", "trend": "up", "note": "運價反彈" },
+                { "name": "塑化", "stage": "lagging", "change": "-0.8%", "trend": "down", "note": "報價疲弱" },
+                { "name": "重電", "stage": "weakening", "change": "-1.2%", "trend": "down", "note": "漲多拉回" }
+            ]
+        }`;
+
+        try {
+            const resultText = await callGeminiAPI(prompt, [], `你是一位精通台股籌碼與產業輪動的分析師。時間：${timeString}。只輸出 JSON。`, true, true);
+            const data = safeParseJSON(resultText);
+
+            if (data) {
+                if (data.indicators && Array.isArray(data.indicators) && data.indicators.length >= 4) {
+                    const mappedIndicators = [
+                        { ...data.indicators[0], color: String(data.indicators[0]?.status || '').includes('空') ? "text-green-400" : "text-red-400", icon: <Briefcase className="w-5 h-5"/> },
+                        { ...data.indicators[1], color: String(data.indicators[1]?.status || '').includes('空') ? "text-green-400" : "text-red-400", icon: <TrendingDown className="w-5 h-5"/> },
+                        { ...data.indicators[2], color: "text-slate-300", icon: <Scale className="w-5 h-5"/> },
+                        { ...data.indicators[3], color: Number(parseFloat(data.indicators[3]?.value || 0)) > 20 ? "text-red-400" : "text-green-400", icon: <CloudLightning className="w-5 h-5"/> },
+                    ];
+                    setIndicators(mappedIndicators);
+                }
+                
+                if (data.sectors && Array.isArray(data.sectors)) {
+                    setSectors(data.sectors);
+                }
+
+                setOverallScore(data.score || 50);
+                setAnalysisText(data.summary || "數據更新完成");
+                setLastUpdated(new Date());
+            }
+        } catch (e) {
+            console.error("Sentiment fetch failed:", e);
+            setAnalysisText("數據更新失敗，請稍後再試");
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // 首次載入時自動更新一次
+    useEffect(() => {
+        fetchLiveSentiment(); 
+    }, []);
+
+    return (
+        <div className="animate-fadeIn space-y-6">
+            {/* 上半部：大盤溫度計 */}
+            <div className="bg-slate-900 border border-slate-700/50 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-900/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
+                <div className="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
+                    <div className="flex-1 w-full">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-lg shadow-lg"><ThermometerSun className="w-6 h-6 text-white" /></div>
+                                <div>
+                                    <h2 className="text-2xl font-bold text-white tracking-wide">大盤多空溫度計</h2>
+                                    <p className="text-slate-400 text-xs flex items-center gap-2">
+                                        {lastUpdated ? `更新於: ${lastUpdated.toLocaleTimeString()}` : "正在初始化數據..."}
+                                        {isLoading && <span className="text-emerald-400 animate-pulse">● 連線交易所中...</span>}
+                                    </p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={fetchLiveSentiment} 
+                                disabled={isLoading}
+                                className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all ${isLoading ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/30'}`}
+                            >
+                                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                                {isLoading ? "掃描中..." : "更新即時數據"}
+                            </button>
+                        </div>
+                        
+                        <div className="mb-4 bg-slate-800/40 p-3 rounded-lg border border-slate-700/50">
+                            <span className="text-xs text-slate-400 font-bold mr-2">AI 戰情解讀：</span>
+                            <span className="text-sm text-slate-200">{analysisText}</span>
+                        </div>
+
+                        <div className="space-y-3">
+                            {indicators.map((ind, idx) => (
+                                <div key={idx} className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3 flex items-center justify-between hover:bg-slate-800 transition-colors">
+                                    <div className="flex items-center gap-3"><div className="text-slate-500">{ind.icon}</div><div><div className="text-sm font-bold text-slate-200">{ind.name}</div><div className="text-[10px] text-slate-500">{ind.desc}</div></div></div>
+                                    <div className="text-right"><div className={`text-sm font-mono font-bold ${ind.color}`}>{ind.value}</div><div className="text-[10px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 inline-block mt-1">{ind.status}</div></div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="w-full md:w-1/3 flex flex-col items-center justify-center bg-slate-800/30 rounded-xl p-6 border border-slate-700/50">
+                        <h3 className="text-slate-400 text-sm mb-4 font-bold">目前市場情緒</h3>
+                        <div className="relative w-48 h-24 overflow-hidden mb-4">
+                            <div className="absolute top-0 left-0 w-full h-full bg-slate-700 rounded-t-full"></div>
+                            <div className="absolute top-2 left-2 w-[calc(100%-16px)] h-[calc(100%-16px)] bg-slate-900 rounded-t-full z-10"></div>
+                            <div className="absolute top-0 left-0 w-full h-full rounded-t-full z-0 thermometer-gradient opacity-80" style={{ clipPath: 'polygon(0 100%, 100% 100%, 100% 0, 0 0)' }}></div>
+                            <div className="absolute bottom-0 left-1/2 w-1 h-full bg-white origin-bottom z-20 transition-transform duration-1000 ease-out" style={{ transform: `translateX(-50%) rotate(${(overallScore / 100) * 180 - 90}deg)` }}></div>
+                            <div className="absolute bottom-0 left-1/2 w-4 h-4 bg-white rounded-full -translate-x-1/2 translate-y-1/2 z-30 shadow-lg"></div>
+                        </div>
+                        <div className="text-center"><div className={`text-3xl font-bold ${overallScore > 60 ? 'text-red-400' : overallScore < 40 ? 'text-green-400' : 'text-yellow-400'}`}>{overallScore > 60 ? '過熱' : overallScore < 40 ? '保守' : '中性偏空'}</div><p className="text-xs text-slate-500 mt-1">綜合評分: {overallScore}/100</p></div>
+                    </div>
+                </div>
+            </div>
+
+            {/* 下半部：資金輪動週期表 (Sector Rotation) - 升級為 AI 聯網版 */}
+            <div className="bg-slate-900 border border-slate-700/50 rounded-2xl p-6 shadow-xl">
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 bg-indigo-600 rounded-lg shadow-lg"><RefreshCw className="w-6 h-6 text-white" /></div>
+                    <div>
+                        <h2 className="text-2xl font-bold text-white tracking-wide">資金輪動週期表 (Sector Rotation)</h2>
+                        <p className="text-slate-400 text-xs">AI 自動掃描今日漲跌板塊，捕捉市場主流</p>
+                    </div>
+                </div>
+                
+                {isLoading ? (
+                     <div className="py-20 text-center border border-slate-800 rounded-xl bg-slate-800/30">
+                        <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mx-auto mb-4" />
+                        <p className="text-slate-400 text-sm">AI 正在掃描全市場類股漲跌...</p>
+                     </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {['leading', 'weakening', 'improving', 'lagging'].map(stage => (
+                            <div key={stage} className={`sector-quadrant rounded-xl border p-4 ${quadrants[stage].color}`}>
+                                <div className="flex items-center gap-2 mb-3 pb-2 border-b border-white/10">
+                                    {quadrants[stage].icon}
+                                    <h3 className="font-bold text-sm tracking-wide">{quadrants[stage].title}</h3>
+                                </div>
+                                <div className="space-y-2">
+                                    {sectors.filter(s => s.stage === stage).map((sector, sIdx) => (
+                                        <div key={sIdx} className="bg-slate-900/60 rounded-lg p-2 flex justify-between items-center hover:bg-slate-900/80 transition-colors">
+                                            <div>
+                                                <div className="text-sm font-bold text-white flex items-center gap-1">
+                                                    {sector.name}
+                                                </div>
+                                                <div className="text-[10px] text-slate-400">{sector.note}</div>
+                                            </div>
+                                            <div className="text-right">
+                                                <span className={`text-xs font-mono font-bold ${String(sector.change || '').includes('-') || String(sector.change || '').includes('▼') ? 'text-green-400' : 'text-red-400'}`}>{sector.change}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {sectors.filter(s => s.stage === stage).length === 0 && <div className="text-center text-xs text-white/40 py-2">- 此象限暫無族群 -</div>}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                
+                {/* 週期說明圖示 */}
+                <div className="mt-6 flex flex-wrap justify-center gap-4 text-[10px] text-slate-500 bg-slate-800/30 p-3 rounded-xl border border-slate-700/30">
+                    <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> 改善 (Improving): 資金開始進駐，底部轉強</div>
+                    <div className="flex items-center gap-1"><MoveRight className="w-3 h-3 text-slate-600"/></div>
+                    <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> 領先 (Leading): 主流強勢股，動能最強</div>
+                    <div className="flex items-center gap-1"><MoveRight className="w-3 h-3 text-slate-600"/></div>
+                    <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-500"></span> 獲利回吐 (Weakening): 動能減弱，需小心</div>
+                    <div className="flex items-center gap-1"><MoveRight className="w-3 h-3 text-slate-600"/></div>
+                    <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-500"></span> 落後 (Lagging): 資金撤離，相對弱勢</div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const TradingViewTicker = () => {
+    const containerRef = useRef(null);
+    useEffect(() => {
+        let container = containerRef.current;
+        if (container) {
+            container.innerHTML = ''; 
+            const script = document.createElement('script');
+            script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js';
+            script.async = true;
+            script.innerHTML = JSON.stringify({
+                "symbols": [
+                    { "proName": "AMEX:SPY", "title": "標普500" }, { "proName": "NASDAQ:QQQ", "title": "那斯達克" },
+                    { "proName": "NASDAQ:SOXX", "title": "費半ETF" }, { "proName": "AMEX:EWT", "title": "台股ETF" },
+                    { "proName": "AMEX:UUP", "title": "美元ETF" }, { "proName": "BATS:VXX", "title": "恐慌ETF" },
+                    { "proName": "NASDAQ:TLT", "title": "美債20年" }, { "proName": "COINBASE:BTCUSD", "title": "比特幣" }
+                ],
+                "showSymbolLogo": true, "colorTheme": "dark", "isTransparent": false, "displayMode": "adaptive", "locale": "zh_TW"
+            });
+            container.appendChild(script);
+        }
+        return () => { if(container) container.innerHTML = ''; }
+    }, []);
+    return <div className="w-full bg-[#131722] border-b border-slate-700 shadow-xl relative z-10"><div className="tradingview-widget-container" ref={containerRef}><div className="tradingview-widget-container__widget"></div></div></div>;
+};
+
+const MarketClock = () => {
+    const [time, setTime] = useState(new Date());
+    const [status, setStatus] = useState({ label: '休市中', color: 'text-slate-500', dot: 'bg-slate-600' });
+    useEffect(() => {
+        const timer = setInterval(() => {
+            const now = new Date();
+            setTime(now);
+            const day = now.getDay();
+            const h = now.getHours();
+            const m = now.getMinutes();
+            const totalMinutes = h * 60 + m;
+            if (day === 0 || day === 6) { setStatus({ label: '週末休市', color: 'text-slate-500', dot: 'bg-slate-600' }); return; }
+            if (totalMinutes >= 510 && totalMinutes < 540) { setStatus({ label: '盤前試撮', color: 'text-yellow-400', dot: 'bg-yellow-500 animate-pulse' }); }
+            else if (totalMinutes >= 540 && totalMinutes < 810) { setStatus({ label: '盤中交易', color: 'text-emerald-400', dot: 'bg-emerald-500 animate-pulse' }); }
+            else if (totalMinutes >= 810 && totalMinutes < 870) { setStatus({ label: '盤後定價', color: 'text-blue-400', dot: 'bg-blue-500' }); }
+            else { setStatus({ label: '已收盤', color: 'text-slate-500', dot: 'bg-slate-600' }); }
+        }, 1000);
+        return () => clearInterval(timer);
+    }, []);
+    return (
+        <div className="flex flex-col items-end animate-fadeIn">
+            <div className="flex items-center gap-2 mb-1"><span className={`w-2 h-2 rounded-full ${status.dot}`}></span><span className={`text-xs font-bold ${status.color}`}>{status.label}</span></div>
+            <div className="flex items-center gap-2 bg-slate-800/80 px-4 py-2 rounded-lg border border-slate-700/50 shadow-inner backdrop-blur-sm">
+                <Clock className="w-5 h-5 text-slate-400" /><span className="text-2xl font-mono font-bold text-white tracking-widest leading-none">{time.toLocaleTimeString('zh-TW', { hour12: false })}</span>
+            </div>
+            <span className="text-[10px] text-slate-500 font-mono mt-1 tracking-wider uppercase">{time.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' })}</span>
+        </div>
+    );
+};
+
+const ChartLauncher = ({ symbol, onClose }) => {
+    const openPopup = (url, title) => {
+        const width = 1200; const height = 800;
+        const left = (window.screen.width - width) / 2; const top = (window.screen.height - height) / 2;
+        window.open(url, title, `toolbar=no,location=no,status=no,menubar=no,scrollbars=yes,resizable=yes,width=${width},height=${height},top=${top},left=${left}`);
+    };
+    const charts = [
+        { name: 'HiStock 嗨投資', desc: '最強K線分析', url: `https://histock.tw/stock/tv/tvchart.aspx?no=${symbol}`, color: 'bg-gradient-to-br from-[#451a03] via-[#78350f] to-[#92400e] hover:from-[#78350f] hover:to-[#b45309]', textColor: 'text-amber-100', icon: <CandlestickChart className="w-6 h-6 text-amber-400" />, border: 'border-amber-500/40 group-hover:border-amber-400/80 shadow-[0_0_15px_rgba(245,158,11,0.15)]' },
+        { name: '玩股網', desc: '台股技術分析首選', url: `https://www.wantgoo.com/stock/${symbol}/technical-chart`, color: 'bg-gradient-to-br from-[#4c0519] via-[#881337] to-[#9f1239] hover:from-[#881337] hover:to-[#e11d48]', textColor: 'text-rose-100', icon: <LineChart className="w-6 h-6 text-rose-400" />, border: 'border-rose-500/40 group-hover:border-rose-400/80 shadow-[0_0_15px_rgba(244,63,94,0.15)]' },
+        { name: 'Yahoo 股市', desc: '即時報價與五檔', url: `https://tw.stock.yahoo.com/quote/${symbol}/technical-analysis`, color: 'bg-gradient-to-br from-[#2e1065] via-[#581c87] to-[#7e22ce] hover:from-[#581c87] hover:to-[#a855f7]', textColor: 'text-purple-100', icon: <Activity className="w-6 h-6 text-purple-400" />, border: 'border-purple-500/40 group-hover:border-purple-400/80 shadow-[0_0_15px_rgba(168,85,247,0.15)]' }
+    ];
+    return (
+        <div className="mb-10 w-full max-w-4xl mx-auto animate-fadeIn relative z-20">
+            <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700/50 rounded-3xl overflow-hidden shadow-2xl relative p-6 md:p-8 ring-1 ring-white/10">
+                <button onClick={onClose} className="absolute top-4 right-4 z-10 p-2 bg-slate-800/80 hover:bg-slate-700 rounded-full text-slate-400 hover:text-white transition-colors border border-slate-600/50" title="關閉"><XCircle className="w-5 h-5" /></button>
+                <div className="text-center mb-6"><h2 className="text-2xl font-bold text-white mb-2 flex items-center justify-center gap-3"><span className="text-3xl text-yellow-400 font-mono tracking-widest">{symbol}</span><span className="text-slate-200">完整技術分析</span></h2></div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">{charts.map((chart) => (<button key={chart.name} onClick={() => openPopup(chart.url, chart.name)} className={`dashboard-card relative group p-4 rounded-2xl border ${chart.border} ${chart.color} flex flex-col items-center justify-center gap-2 h-36 hover:scale-[1.03] transition-all duration-300`}><div className="p-3 bg-black/40 rounded-xl shadow-inner mb-1 border border-white/5">{chart.icon}</div><div className="text-center"><h3 className={`text-lg font-bold ${chart.textColor}`}>{chart.name}</h3><p className="text-white/60 text-xs font-medium">{chart.desc}</p></div></button>))}</div>
+                <div className="flex justify-center border-t border-slate-800/50 pt-6"><button onClick={() => window.open(`https://www.peicheng.com.tw/asp/stockquery/${symbol}.htm`, '_blank')} className="btn-neon-breathing relative overflow-hidden group text-white px-12 py-5 rounded-xl text-lg font-bold flex items-center gap-5 transition-all hover:scale-[1.02] shadow-2xl border border-rose-500/30"><div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 pointer-events-none"></div><Search className="w-6 h-6 text-white animate-pulse" /><div className="flex flex-col items-center leading-none gap-1.5"><span className="tracking-wide text-white drop-shadow-sm text-xl">查看 {symbol} 夢幻報表</span><span className="text-[11px] text-white/90 font-medium tracking-[0.2em] uppercase text-shadow-sm">★ 綜合評分 / 深度檢測 ★</span></div></button></div>
+            </div>
+        </div>
+    );
+};
+
+const AlphaHunterPro = ({ openChart }) => {
+    const [selectedThemeId, setSelectedThemeId] = useState('ai_server'); 
+    const [newsToVerify, setNewsToVerify] = useState("");
+    const [verificationResult, setVerificationResult] = useState(null);
+    const [isVerifying, setIsVerifying] = useState(false);
+    const [verifyImages, setVerifyImages] = useState([]); 
+    const [isVerifyDragging, setIsVerifyDragging] = useState(false);
+    const verifyFileRef = useRef(null);
+    const [newsFeed, setNewsFeed] = useState(GLOBAL_NEWS_CACHE.data || STATIC_NEWS_FALLBACK);
+    const [isNewsLoading, setIsNewsLoading] = useState(false);
+    const [generationError, setGenerationError] = useState(null);
+    const [themeDatabase, setThemeDatabase] = useState(INITIAL_THEME_DATABASE);
+    const [isGeneratingTheme, setIsGeneratingTheme] = useState(false);
+    const isHoveringRef = useRef(false);
+    const activeTheme = themeDatabase[selectedThemeId];
+
+    const fetchLatestNews = useCallback(async (forceRefresh = false) => {
+        const now = Date.now();
+        if (!forceRefresh && GLOBAL_NEWS_CACHE.data && (now - GLOBAL_NEWS_CACHE.timestamp < GLOBAL_NEWS_CACHE.CACHE_DURATION)) {
+            setNewsFeed(GLOBAL_NEWS_CACHE.data);
+            return;
+        }
+        setIsNewsLoading(true);
+        const timeString = new Date().toLocaleString('zh-TW');
+        const prompt = `現在時間是 ${timeString}。請啟動【廣域搜尋模式】，務必使用 Google Search 找出「今日」(${timeString.split(' ')[0]}) 台灣股市最新、討論度最高、成交動能最強的 6 則熱門題材新聞。
+        【重要規則】
+        1. **語言限制**：標題 (title) 必須完全使用「繁體中文」。**嚴禁**出現英文翻譯或中英對照格式。若原文是英文，請翻譯成流暢的台灣財經術語。
+        2. **時效性**：必須是「正在發生」的事情，嚴禁使用過時資料。
+        3. **格式**：請只回傳一個標準的 JSON Array，不要包含 markdown 標記 (\`\`\`json) 或其他文字。
+        4. **數量**：請回傳 6 筆資料。
+        格式如下：
+        [ { "id": 1, "title": "新聞標題", "tag": "theme_tag", "time": "時間", "reliability": "high", "source": "來源" } ]`;
+        try {
+            const resultText = await callGeminiAPI(prompt, [], `嚴格 JSON 生成器。時間：${timeString}。僅輸出 JSON。`, true, true);
+            const newsData = safeParseJSON(resultText);
+            
+            // Auto-fix: 自動搜尋並提取 JSON 中的任何陣列
+            let finalResults = [];
+            if (Array.isArray(newsData)) {
+                finalResults = newsData;
+            } else if (newsData && typeof newsData === 'object') {
+                for (const key in newsData) {
+                    if (Array.isArray(newsData[key])) {
+                        finalResults = newsData[key];
+                        break;
+                    }
+                }
+            }
+
+            if (finalResults.length > 0) {
+                const safeNewsData = finalResults.map(item => ({ id: item.id || Math.random(), title: String(item.title || "未知標題"), tag: String(item.tag || "hot_topic_" + Math.random()), time: String(item.time || "剛剛"), reliability: String(item.reliability || "medium"), source: String(item.source || "Google Search") }));
+                GLOBAL_NEWS_CACHE.data = safeNewsData; GLOBAL_NEWS_CACHE.timestamp = Date.now(); setNewsFeed(safeNewsData);
+            }
+        } catch (e) { console.error("News fetch failed:", e); if (GLOBAL_NEWS_CACHE.data) setNewsFeed(GLOBAL_NEWS_CACHE.data); } finally { setIsNewsLoading(false); }
+    }, []);
+    useEffect(() => { fetchLatestNews(false); }, [fetchLatestNews]);
+
+    const handleNewsClick = async (tag, title) => {
+        setGenerationError(null);
+        if (themeDatabase[tag]) { setSelectedThemeId(tag); return; }
+        setIsGeneratingTheme(true); setSelectedThemeId(tag); 
+        const now = new Date();
+        const timeString = now.toLocaleString('zh-TW');
+        const prompt = `請針對台股題材【${title} (Tag: ${tag})】進行深度即時供應鏈分析。現在時間：${timeString}。任務：找出該題材「今日」最強勢的「上游、中游、下游」受惠台股，嚴格查價。
+        
+        【極重要：輸出格式】
+        請直接回傳一個標準的 JSON Object，不要包含任何開場白或結尾語（如「好的，這是分析...」）。
+        格式範例：
+        {
+            "id": "theme_tag",
+            "name": "題材名稱",
+            "desc": "簡述",
+            "hypeScore": 88,
+            "stage": "主升段",
+            "catalyst": "催化劑",
+            "segmentAnalysis": {
+                "upstream": { "heat": 90, "status": "🔥 缺貨", "desc": "說明", "stocks": [{"code": "2330", "name": "台積電", "role": "晶圓", "isLeader": true, "flow": "外資", "note": "備註"}] },
+                "midstream": { "heat": 80, "status": "📈 強勢", "desc": "說明", "stocks": [] },
+                "downstream": { "heat": 70, "status": "⚡ 爆發", "desc": "說明", "stocks": [] }
+            }
+        }`;
+        try {
+            const resultText = await callGeminiAPI(prompt, [], `即時股市數據庫。時間：${timeString}。只輸出 JSON，不要 Markdown。`, true, true);
+            const newThemeData = safeParseJSON(resultText);
+            if (newThemeData && newThemeData.segmentAnalysis) { setThemeDatabase(prev => ({ ...prev, [tag]: newThemeData })); }
+        } catch (e) { console.error("Theme gen failed:", e); setGenerationError("AI 分析生成失敗，請稍後再試。"); } finally { setIsGeneratingTheme(false); }
+    };
+
+    const processVerifyFiles = (files) => { Array.from(files).forEach(file => { if (file.type.startsWith('image/')) { const reader = new FileReader(); reader.onloadend = () => { setVerifyImages(prev => [...prev, reader.result]); }; reader.readAsDataURL(file); } }); };
+    const handleVerifyImageSelect = (e) => { processVerifyFiles(e.target.files); };
+    const removeVerifyImage = (index) => { setVerifyImages(prev => prev.filter((_, i) => i !== index)); };
+    const handleVerifyDragOver = (e) => { e.preventDefault(); setIsVerifyDragging(true); };
+    const handleVerifyDragLeave = (e) => { e.preventDefault(); setIsVerifyDragging(false); };
+    const handleVerifyDrop = (e) => { e.preventDefault(); setIsVerifyDragging(false); processFiles(e.dataTransfer.files); };
+    useEffect(() => { const handlePaste = (e) => { if (!isHoveringRef.current) return; if (!e.clipboardData || !e.clipboardData.items) return; const items = e.clipboardData.items; for (let i = 0; i < items.length; i++) { if (items[i].type.indexOf('image') !== -1) { const blob = items[i].getAsFile(); const reader = new FileReader(); reader.onloadend = () => { setVerifyImages(prev => [...prev, reader.result]); }; reader.readAsDataURL(blob); e.preventDefault(); } } }; window.addEventListener('paste', handlePaste); return () => { window.removeEventListener('paste', handlePaste); }; }, []);
+    const handleVerifyNews = async () => { if (!newsToVerify.trim() && verifyImages.length === 0) return; setIsVerifying(true); setVerificationResult(null); const prompt = `驗證真實性：${newsToVerify}`; try { const result = await callGeminiAPI(prompt, verifyImages, "嚴格查核員", true, false); setVerificationResult(typeof result === 'string' ? result : JSON.stringify(result)); } catch(e) { setVerificationResult("查核失敗"); } finally { setIsVerifying(false); } };
+
+    const renderHeatBar = (heat) => ( <div className="flex items-center gap-2"><div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden"><div className={`h-full rounded-full transition-all duration-1000 ${heat > 80 ? 'bg-gradient-to-r from-red-500 to-orange-500' : heat > 50 ? 'bg-gradient-to-r from-yellow-500 to-orange-400' : 'bg-blue-500'}`} style={{ width: `${heat}%` }}></div></div><span className={`text-xs font-mono font-bold ${heat > 80 ? 'text-red-400' : 'text-slate-400'}`}>{heat}</span></div> );
+
+    const SegmentCard = ({ title, data }) => {
+        if (!data || !data.stocks) return (<div className="flex-1 min-w-[300px] bg-slate-800/40 rounded-xl border border-slate-700/50 p-4 flex flex-col items-center justify-center text-slate-500 text-xs"><Loader2 className="w-6 h-6 animate-spin mb-2 opacity-50" />分析數據載入中...</div>);
+        return (
+            <div className={`flex-1 min-w-[300px] bg-slate-800/40 rounded-xl border backdrop-blur-sm transition-all group hover:bg-slate-800/60 ${data.heat > 80 ? 'border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : 'border-slate-700/50'}`}>
+                <div className="p-4 border-b border-slate-700/50 flex justify-between items-center"><div><h4 className="font-bold text-slate-200 flex items-center gap-2">{title}{data.heat > 80 && <Flame className="w-4 h-4 text-red-500 animate-pulse" />}</h4><span className={`text-[10px] px-1.5 py-0.5 rounded border ${data.heat > 80 ? 'text-red-400 border-red-500/30 bg-red-900/20' : 'text-slate-400 border-slate-600 bg-slate-800'}`}>{String(data.status)}</span></div><div className="text-right"><div className="text-[10px] text-slate-500 mb-1">資金熱度</div>{renderHeatBar(data.heat)}</div></div>
+                <div className="p-4 space-y-3"><p className="text-xs text-slate-400 italic mb-3">{String(data.desc)}</p>{data.stocks.map((stock) => (<div key={stock.code} onClick={() => openChart(stock.code)} className={`relative p-3 rounded-lg border cursor-pointer transition-all hover:-translate-y-0.5 ${stock.isLeader ? 'bg-gradient-to-r from-indigo-900/40 to-slate-900 border-indigo-500/50 hover:border-indigo-400' : 'bg-slate-900/50 border-slate-700/50 hover:border-slate-500'}`}>{stock.isLeader && (<div className="absolute -top-2 -right-2 bg-yellow-500 text-black text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-lg border border-yellow-300 flex items-center gap-0.5"><Trophy className="w-2.5 h-2.5" /> 領頭羊</div>)}<div className="flex justify-between items-start mb-1"><div className="flex items-center gap-2"><span className="font-mono font-bold text-white text-base">{String(stock.code)}</span><span className="text-sm text-slate-300 font-bold">{String(stock.name)}</span></div><span className={`text-[9px] px-1.5 py-0.5 rounded ${String(stock.flow || '').includes('主力') ? 'bg-red-900/30 text-red-400' : 'bg-slate-800 text-slate-500'}`}>{String(stock.flow)}</span></div><div className="flex justify-between items-end"><span className="text-[10px] text-slate-500 bg-slate-800/80 px-1 rounded">{String(stock.role)}</span><span className="text-[10px] text-indigo-300">{String(stock.note)}</span></div></div>))}</div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="animate-fadeIn space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 bg-slate-800/80 border border-slate-700 rounded-2xl p-5 relative overflow-hidden">
+                    <div className="flex items-center justify-between mb-4"><div className="flex items-center gap-2"><Megaphone className="w-5 h-5 text-yellow-400" /><h3 className="font-bold text-white">市場傳聞快篩 (Live)</h3>{isNewsLoading && <span className="text-xs text-emerald-400 animate-pulse flex items-center gap-1"><Globe className="w-3 h-3" /> 廣域搜索中...</span>}</div><button onClick={() => fetchLatestNews(true)} className="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-1 rounded text-slate-300 flex items-center gap-1 transition-colors"><RefreshCw className={`w-3 h-3 ${isNewsLoading ? 'animate-spin' : ''}`} /> 刷新</button></div>
+                    <div className="space-y-3">{newsFeed.map(news => (<button key={news.id} onClick={() => handleNewsClick(news.tag, news.title)} className={`w-full text-left p-3 rounded-xl border transition-all group hover:bg-slate-700/50 ${selectedThemeId === news.tag ? 'bg-indigo-900/30 border-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.2)]' : 'bg-slate-900/40 border-slate-700/50'}`}><div className="flex justify-between items-start mb-1"><div className="flex items-center gap-2"><span className={`text-[9px] px-1.5 py-0.5 rounded border ${news.reliability === 'high' ? 'text-emerald-400 border-emerald-500/30' : 'text-yellow-400 border-yellow-500/30'}`}>{news.reliability === 'high' ? '可信度高' : '觀察中'}</span><span className="text-[10px] text-slate-500">{String(news.source)}</span></div><span className="text-[10px] text-slate-500 flex items-center gap-1"><Clock className="w-3 h-3" /> {String(news.time)}</span></div><h4 className={`text-sm font-bold leading-snug group-hover:text-white ${selectedThemeId === news.tag ? 'text-indigo-300' : 'text-slate-300'}`}>{String(news.title)}</h4></button>))}</div>
+                </div>
+                <div className={`lg:col-span-1 bg-gradient-to-br from-slate-900 to-indigo-950 border rounded-2xl p-5 flex flex-col relative transition-all duration-300 ${isVerifyDragging ? 'border-emerald-500 scale-[1.01]' : 'border-indigo-500/30'}`} onDragOver={handleVerifyDragOver} onDragLeave={handleVerifyDragLeave} onDrop={handleVerifyDrop} onMouseEnter={() => isHoveringRef.current = true} onMouseLeave={() => isHoveringRef.current = false}>
+                    {isVerifyDragging && (<div className="absolute inset-0 bg-slate-900/90 z-20 flex flex-col items-center justify-center rounded-2xl backdrop-blur-sm border-2 border-dashed border-emerald-500 animate-in fade-in duration-200 pointer-events-none"><Upload className="w-12 h-12 text-emerald-400 mb-2 animate-bounce" /><h3 className="text-xl font-bold text-white">釋放以加入圖片</h3></div>)}
+                    <div className="flex items-center gap-2 mb-3"><ShieldAlert className="w-5 h-5 text-red-400" /><h3 className="font-bold text-white">AI 謠言粉碎機</h3><span className="text-xs text-slate-400 ml-auto md:ml-2">此區專門驗證真偽與查核來源</span></div>
+                    <textarea id="verify-textarea" value={newsToVerify} onChange={(e) => setNewsToVerify(e.target.value)} placeholder="聽到小道消息？貼上文字、新聞連結 (URL) 或直接拖入圖片..." className="w-full flex-1 bg-black/30 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-indigo-500 resize-none mb-3"></textarea>
+                    {verifyImages.length > 0 && (<div className="mb-3 grid grid-cols-4 gap-2">{verifyImages.map((img, idx) => (<div key={idx} className="relative h-12 rounded-lg overflow-hidden border border-indigo-500/30 group"><img src={img} alt={`Evidence ${idx}`} className="w-full h-full object-cover" /><button onClick={() => removeVerifyImage(idx)} className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-300"><Trash2 className="w-4 h-4" /></button></div>))}</div>)}
+                    <div className="flex gap-2"><input type="file" ref={verifyFileRef} onChange={handleVerifyImageSelect} accept="image/*" multiple className="hidden" /><button onClick={() => verifyFileRef.current.click()} className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 py-2 rounded-lg text-xs flex items-center justify-center gap-2 transition-colors border border-slate-700"><ImageIcon className="w-4 h-4" /> {verifyImages.length > 0 ? `再加入圖片 (${verifyImages.length})` : "上傳截圖"}</button><button onClick={handleVerifyNews} disabled={isVerifying || (!newsToVerify && verifyImages.length === 0)} className={`flex-1 py-2 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition-all ${isVerifying ? 'bg-slate-700 text-slate-500' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/20'}`}>{isVerifying ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileSearch className="w-4 h-4" />}{isVerifying ? "AI 查核中..." : "開始驗證"}</button></div>
+                </div>
+            </div>
+            {verificationResult && (<div className="bg-slate-800 border border-indigo-500/50 rounded-xl p-5 animate-in slide-in-from-top-4 shadow-2xl relative"><button onClick={() => setVerificationResult(null)} className="absolute top-3 right-3 text-slate-500 hover:text-white"><XCircle className="w-5 h-5" /></button><div className="flex items-start gap-3"><div className="p-2 bg-indigo-500/20 rounded-lg"><Bot className="w-6 h-6 text-indigo-400" /></div><div><h4 className="font-bold text-indigo-300 mb-2">AI 查核報告</h4><div className="prose prose-invert prose-sm text-slate-300 leading-relaxed whitespace-pre-line text-sm">{verificationResult}</div></div></div></div>)}
+            {isGeneratingTheme ? (<div className="bg-slate-900/60 border border-slate-700 rounded-2xl p-12 flex flex-col items-center justify-center animate-pulse"><Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" /><h3 className="text-xl font-bold text-white mb-2">AI 戰情分析中...</h3><p className="text-slate-400 text-sm">正在調用 Google Search 掃描供應鏈熱度與龍頭股</p></div>) : generationError ? (<div className="bg-slate-900/60 border border-red-500/30 rounded-2xl p-12 flex flex-col items-center justify-center"><AlertTriangle className="w-12 h-12 text-red-500 mb-4" /><h3 className="text-xl font-bold text-white mb-2">分析失敗</h3><p className="text-slate-400 text-sm mb-4">{generationError}</p><button onClick={() => window.location.reload()} className="px-4 py-2 bg-slate-700 rounded text-sm hover:bg-slate-600 transition-colors text-white">重整頁面</button></div>) : (activeTheme && activeTheme.segmentAnalysis) ? (<div className="bg-slate-900/60 border border-slate-700 rounded-2xl p-6 relative animate-fadeIn"><div className="absolute top-0 right-0 w-96 h-96 bg-indigo-600/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div><div className="flex flex-col md:flex-row items-start justify-between gap-6 mb-8 relative z-10"><div><div className="flex items-center gap-3 mb-2"><h2 className="text-3xl font-bold text-white tracking-wide">{String(activeTheme.name)}</h2><span className={`text-xs font-bold px-2 py-0.5 rounded border ${activeTheme.hypeScore > 80 ? 'text-red-400 border-red-500/30 bg-red-900/20' : 'text-yellow-400 border-yellow-500/30 bg-yellow-900/20'}`}>{String(activeTheme.stage)}</span></div><p className="text-slate-400 text-sm max-w-2xl">{String(activeTheme.desc)}</p><div className="flex items-center gap-2 mt-3 text-sm text-slate-300 bg-slate-800/50 w-fit px-3 py-1 rounded-full border border-slate-700"><Zap className="w-3.5 h-3.5 text-yellow-400" /><span className="text-slate-500">催化劑：</span>{String(activeTheme.catalyst)}</div></div><div className="flex flex-col items-end"><div className="text-xs text-slate-500 mb-1">題材總熱度</div><div className="flex items-baseline gap-1"><span className={`text-4xl font-mono font-bold ${activeTheme.hypeScore > 85 ? 'text-red-500' : 'text-yellow-500'}`}>{String(activeTheme.hypeScore)}</span><span className="text-sm text-slate-600">/ 100</span></div></div></div><div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative z-10"><SegmentCard title="上游：原料/晶片" data={activeTheme.segmentAnalysis.upstream} /><SegmentCard title="中游：模組/設備" data={activeTheme.segmentAnalysis.midstream} /><SegmentCard title="下游：組裝/品牌" data={activeTheme.segmentAnalysis.downstream} /></div><div className="mt-4 text-center"><p className="text-[10px] text-slate-500 flex items-center justify-center gap-1"><Info className="w-3 h-3" /> 提示：點擊個股可直接開啟 K 線圖。帶有 <Trophy className="w-3 h-3 text-yellow-500" /> 標記為該區段真正的領頭羊。</p></div></div>) : null}
+        </div>
+    );
+};
+
+// --- AI Assistant (多圖升級版 - 加入 Hover 檢查) ---
+const AIAssistant = () => {
+    const [inputText, setInputText] = useState("");
+    const [result, setResult] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
+    
+    // 多圖支援
+    const [selectedImages, setSelectedImages] = useState([]);
+    
+    const [analysisMode, setAnalysisMode] = useState('comprehensive'); 
+    const [stockCode, setStockCode] = useState(""); 
+    const [isDragging, setIsDragging] = useState(false); 
+    const fileInputRef = useRef(null);
+    const isHoveringRef = useRef(false);
+    
+    const analysisModes = [
+        { id: 'comprehensive', label: '全方位健診', icon: <Activity className="w-4 h-4" />, color: 'bg-indigo-600' },
+        { id: 'technical', label: '技術面 (K線)', icon: <CandlestickChart className="w-4 h-4" />, color: 'bg-emerald-600' },
+        { id: 'fundamental', label: '基本面 (價值)', icon: <PieChart className="w-4 h-4" />, color: 'bg-rose-600' },
+        { id: 'chips', label: '籌碼面 (主力)', icon: <Users className="w-4 h-4" />, color: 'bg-amber-600' },
+    ];
+
+    const processFiles = (files) => {
+        Array.from(files).forEach(file => {
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    setSelectedImages(prev => [...prev, reader.result]);
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+    };
+
+    const handleImageSelect = (e) => {
+        processFiles(e.target.files);
+    };
+
+    const removeImage = (index) => {
+        setSelectedImages(prev => prev.filter((_, i) => i !== index));
+    };
+
+    // Paste handling
+    useEffect(() => {
+        const handlePaste = (e) => {
+            if (!isHoveringRef.current) return;
+            // Logic similar to VerifyPaste
+            if (!e.clipboardData || !e.clipboardData.items) return;
+            const items = e.clipboardData.items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const blob = items[i].getAsFile();
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        setSelectedImages(prev => [...prev, reader.result]);
+                    };
+                    reader.readAsDataURL(blob);
+                    e.preventDefault(); 
+                }
+            }
+        };
+        window.addEventListener('paste', handlePaste);
+        return () => window.removeEventListener('paste', handlePaste);
+    }, []);
+
+    const handleDragOver = (e) => { e.preventDefault(); setIsDragging(true); };
+    const handleDragLeave = (e) => { e.preventDefault(); setIsDragging(false); };
+    const handleDrop = (e) => { e.preventDefault(); setIsDragging(false); processFiles(e.dataTransfer.files); };
+
+    const handleAnalyze = async () => {
+        if (!inputText.trim() && selectedImages.length === 0 && !stockCode.trim()) return;
+        setIsLoading(true);
+        setResult("");
+        
+        let prompt = inputText.trim();
+        const today = new Date().toLocaleDateString('zh-TW');
+        let modeInstruction = "";
+        switch (analysisMode) {
+            case 'technical': modeInstruction = "專注於技術分析。識別 K 線型態 (如 W底、M頭、島狀反轉)、均線排列 (多頭/空頭/糾結)、MACD/RSI 指標背離。請給出明確的支撐位與壓力位價格。"; break;
+            case 'fundamental': modeInstruction = "專注於基本面價值。若圖片包含財報數據 (EPS, 營收 YoY/MoM, 毛利率)，請詳細解讀。若無，請根據技術面推測市場對該公司基本面的預期。"; break;
+            case 'chips': modeInstruction = "專注於籌碼與主力動向。觀察成交量 (量價關係)，判斷是否有主力吃貨 (量增價穩) 或出貨 (爆量長黑)。"; break;
+            case 'comprehensive': default: modeInstruction = "進行全方位深度健診。綜合技術面趨勢、籌碼面主力意圖與基本面潛力。給出一個總結性的操作建議 (強烈買進/分批佈局/觀望/賣出)。"; break;
+        }
+        const contextInfo = stockCode ? `使用者關注的股票代碼/名稱為：【${stockCode}】。` : "使用者未提供具體代碼，請嘗試從圖片中辨識。";
+        const systemPrompt = `你現在是 JAMES，一位頂尖的金融分析師。今天是 ${today}。${contextInfo} 你的分析任務如下：1. **${modeInstruction}** 2. **深度解讀**：不要只描述「股價上漲」或「下跌」，要解釋「為什麼」。3. **數據驗證**：請引用數據佐證。4. **操作建議**：給出具體的策略。請用專業、犀利且具實戰性的口吻回答。使用 Markdown 格式。`;
+
+        try {
+            const response = await callGeminiAPI(prompt, selectedImages, systemPrompt, true);
+            setResult(response);
+        } catch (e) {
+            setResult(`分析錯誤: ${e.message}`);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const renderMarkdown = (text) => {
+        if (window.marked) {
+            return { __html: window.marked.parse(text) };
+        }
+        return { __html: text.replace(/\n/g, '<br/>') }; 
+    };
+
+    return (
+        <div 
+            className={`w-full max-w-[96%] mx-auto mb-10 bg-gradient-to-br from-indigo-900/40 to-purple-900/40 p-1 rounded-2xl border transition-all duration-300 shadow-lg relative overflow-hidden group focus:outline-none ${isDragging ? 'border-emerald-500 scale-[1.01] shadow-emerald-500/20' : 'border-indigo-500/30'}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onMouseEnter={() => isHoveringRef.current = true}
+            onMouseLeave={() => isHoveringRef.current = false}
+        >
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-indigo-500/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000 pointer-events-none"></div>
+            {isDragging && (
+                <div className="absolute inset-0 bg-slate-900/90 z-50 flex flex-col items-center justify-center rounded-2xl backdrop-blur-sm border-2 border-dashed border-emerald-500 animate-in fade-in duration-200">
+                    <Upload className="w-16 h-16 text-emerald-400 mb-4 animate-bounce" />
+                    <h3 className="text-2xl font-bold text-white">釋放滑鼠以開始分析</h3>
+                </div>
+            )}
+            <div className="bg-slate-900/90 rounded-xl p-6 h-full backdrop-blur-sm">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-indigo-600 p-2 rounded-lg text-white shadow-lg shadow-indigo-500/30"><Sparkles className="w-6 h-6 animate-pulse" /></div>
+                        <div>
+                            <h3 className="text-xl font-bold text-white flex items-center gap-2">AI 智能財經助手 <span className="text-xs font-normal px-2 py-0.5 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 text-white border border-white/20">Pro</span></h3>
+                            <p className="text-slate-400 text-xs">貼上 (Ctrl+V) 多張截圖，AI 自動深度判讀多空</p>
+                        </div>
+                    </div>
+                    <div className="flex bg-slate-800/80 p-1 rounded-lg border border-slate-700 overflow-x-auto no-scrollbar">
+                        {analysisModes.map(mode => (
+                            <button key={mode.id} onClick={() => setAnalysisMode(mode.id)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all whitespace-nowrap ${analysisMode === mode.id ? `${mode.color} text-white shadow-md` : 'text-slate-400 hover:text-white hover:bg-slate-700'}`}>
+                                {mode.icon}
+                                {mode.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="md:col-span-1">
+                        <label className="block text-xs text-slate-500 mb-1 ml-1">股票代碼/名稱 (選填)</label>
+                        <input type="text" value={stockCode} onChange={(e) => setStockCode(e.target.value)} placeholder="例：2330 台積電" className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 placeholder-slate-600" />
+                    </div>
+                    <div className="md:col-span-2">
+                        <label className="block text-xs text-slate-500 mb-1 ml-1">補充資訊 (選填)</label>
+                        <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="建議輸入：新聞網址 (URL)、目前股價、最新利多..." className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500 placeholder-slate-600" />
+                    </div>
+                </div>
+                
+                {selectedImages.length > 0 && (
+                    <div className="mb-4 grid grid-cols-4 md:grid-cols-6 gap-3 animate-fadeIn">
+                        {selectedImages.map((img, idx) => (
+                            <div key={idx} className="relative h-20 rounded-lg overflow-hidden border border-slate-600 shadow-md group">
+                                <img src={img} alt={`Preview ${idx}`} className="w-full h-full object-cover" />
+                                <button onClick={() => removeImage(idx)} className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-white">
+                                    <XCircle className="w-6 h-6" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                <div className="space-y-4">
+                    <div className="relative">
+                        <div className="flex justify-end items-center gap-3 mt-2 border-t border-slate-800 pt-3">
+                            <span className="text-xs text-slate-500 mr-auto flex items-center gap-1"><Info className="w-3 h-3" /> {analysisMode === 'technical' ? 'AI 將專注於形態學與指標判讀' : '支援多圖與連結分析'}</span>
+                            <input type="file" ref={fileInputRef} onChange={handleImageSelect} accept="image/*" multiple className="hidden" />
+                            <button onClick={() => fileInputRef.current.click()} className="flex items-center gap-2 px-3 py-2 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors border border-slate-700" title="上傳圖片"><ImageIcon className="w-4 h-4" /><span className="text-xs font-medium">上傳圖片</span></button>
+                            <button onClick={handleAnalyze} disabled={isLoading || (!inputText.trim() && selectedImages.length === 0 && !stockCode.trim())} className={`px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all shadow-lg ${isLoading || (!inputText.trim() && selectedImages.length === 0 && !stockCode.trim()) ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-indigo-500/25'}`}>
+                                {isLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                                {isLoading ? "深度解析中..." : "開始診斷"}
+                            </button>
+                        </div>
+                    </div>
+                    {result && (
+                        <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-5 animate-fadeIn shadow-inner">
+                            <div className="flex items-start gap-3">
+                                <div className="mt-1 p-1.5 bg-indigo-500/20 rounded-full"><Bot className="w-5 h-5 text-indigo-400 flex-shrink-0" /></div>
+                                <div className="prose prose-invert prose-sm max-w-none text-slate-300 leading-relaxed marker:text-indigo-400" dangerouslySetInnerHTML={renderMarkdown(result)} />
+                            </div>
+                            <div className="mt-4 pt-3 border-t border-slate-700/50 flex justify-between items-center text-xs text-slate-500">
+                                <span>分析模型：Gemini 2.5 Flash</span>
+                                <span>僅供參考，投資請自負盈虧</span>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- LiveQuantScanner v6.0 (華爾街旗艦版) ---
+const LiveQuantScanner = ({ openChart, addToWatchlist }) => {
+    const [activeStrategy, setActiveStrategy] = useState('momentum_alpha');
+    const [isScanning, setIsScanning] = useState(false);
+    const [scanResults, setScanResults] = useState(null);
+    const [scanProgress, setScanProgress] = useState(0);
+    const [lastScanTime, setLastScanTime] = useState(null);
+    const [errorMsg, setErrorMsg] = useState(null);
+
+    const strategies = useMemo(() => ({
+        'momentum_alpha': {
+            id: 'momentum_alpha', title: 'Alpha 動能狙擊', tag: 'Momentum Scalping', icon: <ZapIcon className="w-5 h-5" />, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/50',
+            desc: '針對高波動率與成交量異常放大的標的，捕捉短線動能突破。',
+            logic: ['Volume > 5日均量 2.5倍', 'RSI (14) > 65 且 < 85 (鈍化前)', '乖離率 Bias > 3%'],
+            searchQuery: "台股 今日 成交量爆增 強勢股 RSI強勢 乖離率擴大"
+        },
+        'institutional_lock': {
+            id: 'institutional_lock', title: '法人鎖碼跟單', tag: 'Smart Money Flow', icon: <Briefcase className="w-5 h-5" />, color: 'text-indigo-400', bg: 'bg-indigo-500/10', border: 'border-indigo-500/50',
+            desc: '追蹤外資與投信連續買超，且股價尚未噴出的「蓄勢待發」股。',
+            logic: ['投信連買 > 3日', '主力集中度 > 15%', '股價在 20MA 之上整理'],
+            searchQuery: "台股 今日 投信買超 主力鎖碼 籌碼集中 蓄勢待發"
+        },
+        'volatility_breakout': {
+            id: 'volatility_breakout', title: '波動率突破 (VCP)', tag: 'Volatility Breakout', icon: <Activity className="w-5 h-5" />, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/50',
+            desc: '尋找價格壓縮極致後的帶量突破 (Mark Minervini VCP 型態)。',
+            logic: ['布林通道壓縮 (Bandwidth < 5%)', '突破上軌', 'ATR 增加'],
+            searchQuery: "台股 今日 布林通道突破 盤整突破 VCP型態"
+        }
+    }), []);
+
+    const scanMarket = async () => {
+        setIsScanning(true);
+        setScanResults(null);
+        setErrorMsg(null);
+        setScanProgress(0);
+
+        const progressInterval = setInterval(() => {
+            setScanProgress(prev => {
+                if (prev >= 90) return prev;
+                return prev + Math.floor(Math.random() * 15);
+            });
+        }, 500);
+        
+        const strategy = strategies[activeStrategy];
+        const now = new Date();
+        const todayStr = now.toLocaleString('zh-TW', { hour12: false });
+        
+        const prompt = `請扮演華爾街頂尖的量化交易演算法 (Quant Algo)。現在時間：${todayStr}。
+        交易策略模型：【${strategy.title}】
+        
+        任務：
+        1. **深度掃描**：使用 Google Search 搜尋「今日」台股市場，找出 4 檔最符合該策略邏輯的潛力股。
+        2. **即時定價**：必須獲取今日最新即時股價 (Price) 與 漲跌幅 (Change)。
+        3. **量化運算**：請為每一檔股票計算以下交易參數 (若無精確數據，請依技術面邏輯推算合理的數值)：
+        - **支撐位 (Support)**: 下檔關鍵防守價。
+        - **壓力位 (Resistance)**: 上檔目標價。
+        - **建議進場價 (Entry Zone)**: 目前價格附近的合理區間。
+        - **停損價 (Stop Loss)**: 嚴格風控點 (通常是支撐位下方 2-3%)。
+        - **停利價 (Take Profit)**: 預期波段滿足點。
+        - **預期漲幅 (Upside)**: (停利價 - 現價) / 現價 %。
+        - **勝率 (Win Rate)**: 根據型態完整度給予 0-100% 的信心分數。
+        - **風報比 (RR Ratio)**: (停利-進場)/(進場-停損)，格式如 "1:2.5"。
+        - **訊號標籤**: 如 "BULLISH BREAKOUT", "STRONG BUY", "ACCUMULATION"。
+        
+        【極重要：輸出格式】
+        請只回傳一個標準的 JSON Array。不要包含 Markdown，不要包含任何前言後語。
+        格式必須是純粹的陣列：[{...}, {...}, {...}, {...}]
+        
+        格式範例：
+        [
+        {
+            "code": "2330",
+            "name": "台積電",
+            "price": "1000",
+            "change": "+2.5%",
+            "signal_tag": "STRONG BUY",
+            "win_rate": 88,
+            "upside": "15%",
+            "rr_ratio": "1:3.2",
+            "support": "980",
+            "resistance": "1050",
+            "entry_zone": "995-1005",
+            "stop_loss": "970",
+            "take_profit": "1080",
+            "reason": "量化模型偵測到外資買盤湧入，RSI 黃金交叉，突破下降趨勢線。"
+        }
+        ]`;
+
+        try {
+            const systemInstruction = `你是一個高頻量化交易系統。現在時間戳記：${now.toISOString()}。你的任務是模擬專業看盤軟體的訊號輸出。嚴格使用 Google Search 獲取最新報價。只輸出 JSON 陣列。絕對不要使用 Markdown 格式。`;
+            const resultText = await callGeminiAPI(prompt, [], systemInstruction, true, true);
+            
+            const results = safeParseJSON(resultText);
+            
+            clearInterval(progressInterval);
+            setScanProgress(100);
+            
+            // Auto-fix: 自動搜尋並提取 JSON 中的任何陣列
+            let finalResults = [];
+            if (Array.isArray(results)) {
+                finalResults = results;
+            } else if (results && typeof results === 'object') {
+                // 如果 AI 回傳了物件 (例如 { result: [...] })，嘗試找出其中的陣列
+                for (const key in results) {
+                    if (Array.isArray(results[key])) {
+                        finalResults = results[key];
+                        break;
+                    }
+                }
+            }
+
+            if (finalResults.length > 0) {
+                setScanResults(finalResults);
+                setLastScanTime(new Date());
+            } else {
+                throw new Error("AI 回傳格式無法解析為陣列，請重試");
+            }
+        } catch (e) {
+            console.error("Scan failed:", e);
+            setErrorMsg(`量化引擎連線逾時：${e.message || "請重試"}`);
+            setScanResults([]); 
+            clearInterval(progressInterval);
+        } finally {
+            setTimeout(() => setIsScanning(false), 500); 
+        }
+    };
+
+    const activeData = strategies[activeStrategy];
+
+    // 渲染量化卡片
+    const QuantCard = ({ stock }) => (
+        <div className="bg-[#1e222d] border border-slate-700 hover:border-blue-500/50 rounded-xl overflow-hidden shadow-lg group transition-all duration-300 hover:-translate-y-1 relative">
+            <div className={`h-1 w-full bg-gradient-to-r ${String(stock.change || '').includes('-') ? 'from-green-500 to-emerald-600' : 'from-red-500 to-orange-500'}`}></div>
+            
+            <div className="p-5">
+                <div className="flex justify-between items-start mb-4">
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <span className="bg-slate-700 text-slate-300 text-[10px] font-mono px-1.5 py-0.5 rounded">{String(stock.code || '---')}</span>
+                            <h3 className="text-lg font-bold text-white tracking-wide">{String(stock.name || '---')}</h3>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                            <span className={`text-3xl font-mono font-bold ${String(stock.change || '').includes('-') ? 'text-emerald-400' : 'text-red-500'}`}>{String(stock.price || '---')}</span>
+                            <span className={`text-sm font-bold ${String(stock.change || '').includes('-') ? 'text-emerald-400' : 'text-red-500'}`}>{String(stock.change || '---')}</span>
+                        </div>
+                    </div>
+                    <div className="text-right flex flex-col items-end">
+                        <span className={`text-[10px] font-bold px-2 py-1 rounded border mb-1 ${stock.win_rate >= 80 ? 'bg-red-900/20 text-red-400 border-red-500/30' : 'bg-blue-900/20 text-blue-400 border-blue-500/30'}`}>
+                            {String(stock.signal_tag || 'HOLD')}
+                        </span>
+                        <div className="flex items-center gap-1 text-slate-400 text-xs">
+                        <Target className="w-3 h-3" /> 勝率 {String(stock.win_rate || '0')}%
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-[#131722] rounded-lg p-3 border border-slate-700/50 mb-4">
+                    <div className="grid grid-cols-3 gap-2 text-center divide-x divide-slate-700">
+                        <div>
+                            <div className="text-[10px] text-slate-500 mb-1">進場區間</div>
+                            <div className="text-sm font-mono text-yellow-400 font-bold">{String(stock.entry_zone || '---')}</div>
+                        </div>
+                        <div>
+                            <div className="text-[10px] text-slate-500 mb-1">停利目標</div>
+                            <div className="text-sm font-mono text-emerald-400 font-bold">{String(stock.take_profit || '---')}</div>
+                        </div>
+                        <div>
+                            <div className="text-[10px] text-slate-500 mb-1">停損防守</div>
+                            <div className="text-sm font-mono text-red-400 font-bold">{String(stock.stop_loss || '---')}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="flex justify-between items-center bg-slate-800/50 px-3 py-2 rounded">
+                        <span className="text-xs text-slate-400">預期漲幅</span>
+                        <span className="text-sm font-bold text-blue-300">+{String(stock.upside || '---')}</span>
+                    </div>
+                    <div className="flex justify-between items-center bg-slate-800/50 px-3 py-2 rounded">
+                        <span className="text-xs text-slate-400">風報比 RR</span>
+                        <span className="text-sm font-bold text-purple-300">{String(stock.rr_ratio || '---')}</span>
+                    </div>
+                </div>
+
+                <div className="text-xs text-slate-400 leading-relaxed border-t border-slate-700 pt-3">
+                    <span className="text-blue-500 font-bold mr-1">[AI 演算]</span>
+                    {String(stock.reason || '正在分析中...')}
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 border-t border-slate-700">
+                <button onClick={() => openChart(stock.code)} className="py-3 flex items-center justify-center gap-2 text-xs font-bold text-slate-300 hover:bg-slate-700 transition-colors border-r border-slate-700">
+                    <Activity className="w-4 h-4" /> K 線確認
+                </button>
+                <button onClick={() => addToWatchlist(stock.code)} className="py-3 flex items-center justify-center gap-2 text-xs font-bold text-emerald-400 hover:bg-emerald-900/20 transition-colors">
+                    <Plus className="w-4 h-4" /> 加入監控
+                </button>
+            </div>
+        </div>
+    );
+
+    return (
+        <div className="animate-fadeIn space-y-6">
+            <div className="bg-[#131722] border border-slate-700 rounded-2xl p-6 md:p-8 shadow-2xl">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-8">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-blue-600 rounded-xl shadow-lg shadow-blue-500/20 relative group overflow-hidden">
+                            <div className="absolute inset-0 bg-white/30 translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
+                            <Binary className="w-8 h-8 text-white" />
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-bold text-white flex items-center gap-2 tracking-wide">
+                                AI 實戰量化雷達 <span className="text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded font-mono">v6.0 PRO</span>
+                            </h2>
+                            <p className="text-slate-400 text-xs mt-1">Institutional Grade Quantitative Scanning • 華爾街級演算法</p>
+                        </div>
+                    </div>
+                    
+                    {/* 策略選擇器 */}
+                    <div className="flex bg-[#0b0e14] p-1 rounded-lg border border-slate-700">
+                        {Object.values(strategies).map(strat => (
+                            <button
+                                key={strat.id}
+                                onClick={() => { setActiveStrategy(strat.id); setScanResults(null); }}
+                                className={`px-4 py-2 rounded-md text-xs font-bold transition-all flex items-center gap-2 ${activeStrategy === strat.id ? 'bg-slate-700 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
+                            >
+                                {strat.icon} <span className="hidden md:inline">{strat.title}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+
+                {/* 掃描控制區 */}
+                {!scanResults && !isScanning && (
+                    <div className="text-center py-12 border-2 border-dashed border-slate-700 rounded-2xl bg-slate-800/20">
+                        <div className="max-w-lg mx-auto">
+                            <Radar className="w-16 h-16 text-slate-600 mx-auto mb-4 animate-pulse" />
+                            <h3 className="text-xl font-bold text-white mb-2">{activeData.title}</h3>
+                            <p className="text-slate-400 text-sm mb-6">{activeData.desc}</p>
+                            
+                            <div className="flex flex-wrap justify-center gap-2 mb-8">
+                                {activeData.logic.map((rule, i) => (
+                                    <span key={i} className="text-[10px] bg-slate-800 text-slate-300 px-2 py-1 rounded border border-slate-600 font-mono">
+                                        {rule}
+                                    </span>
+                                ))}
+                            </div>
+
+                            <button onClick={scanMarket} className="group relative px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl shadow-lg shadow-blue-500/30 transition-all hover:scale-105 overflow-hidden">
+                                <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
+                                <span className="flex items-center gap-2 text-lg"><ZapIcon className="w-5 h-5 fill-current" /> 啟動 AI 量化運算</span>
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* 掃描進度條 */}
+                {isScanning && (
+                    <div className="py-20 text-center">
+                        <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-6" />
+                        <h3 className="text-2xl font-bold text-white mb-2 tracking-widest">CALCULATING ALPHA...</h3>
+                        <p className="text-blue-400 font-mono text-sm mb-6">正在執行多因子回測與即時報價運算</p>
+                        <div className="w-64 h-2 bg-slate-800 rounded-full mx-auto overflow-hidden">
+                            <div className="h-full bg-blue-500 transition-all duration-300 ease-out" style={{ width: `${scanProgress}%` }}></div>
+                        </div>
+                        <div className="mt-2 text-xs text-slate-500 font-mono">{scanProgress}% COMPLETED</div>
+                    </div>
+                )}
+
+                {/* 結果展示區 */}
+                {scanResults && (
+                    <div className="animate-in fade-in slide-in-from-bottom-8 duration-700">
+                        <div className="flex justify-between items-center mb-4 px-2">
+                            <div className="text-sm text-slate-400">
+                                <span className="text-green-400 font-bold">● System Online</span> <span className="mx-2">|</span> 策略：{activeData.title} <span className="mx-2">|</span> 掃描時間：{lastScanTime?.toLocaleTimeString()}
+                            </div>
+                            <button onClick={scanMarket} className="text-xs flex items-center gap-1 text-blue-400 hover:text-blue-300 transition-colors"><RefreshCw className="w-3 h-3" /> 重新掃描</button>
+                        </div>
+                        
+                        {errorMsg ? (
+                            <div className="bg-red-900/20 border border-red-500/50 p-4 rounded-xl text-center text-red-200">
+                                <AlertTriangle className="w-6 h-6 mx-auto mb-2" />
+                                {errorMsg}
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                {scanResults.map((stock, idx) => (
+                                    <QuantCard key={idx} stock={stock} />
+                                ))}
+                            </div>
+                        )}
+                        <div className="mt-6 p-3 bg-blue-900/10 border border-blue-500/20 rounded-lg flex items-center gap-3 text-xs text-slate-400">
+                            <Info className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                            <span>免責聲明：本量化雷達僅為 AI 輔助分析工具，所有進出場點位（Entry/TP/SL）均為演算法模擬推算，並非投資建議。即時報價可能與券商軟體有延遲，下單前請務必再次確認。</span>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const TWHotLists = () => {
+    const [activeFilter, setActiveFilter] = useState('most_active');
+    const [lookupCode, setLookupCode] = useState('');
+    const [lookupResult, setLookupResult] = useState(null); 
+    const [lastUpdated, setLastUpdated] = useState(new Date());
+    const containerRef = useRef(null);
+
+    const filters = [
+        { id: 'most_active', label: '🔥 爆量長紅 (資金流向)', color: 'text-violet-300', bg: 'bg-violet-900/40', border: 'border-violet-500' },
+        { id: 'top_gainers', label: '🚀 強勢漲停', color: 'text-rose-300', bg: 'bg-rose-900/40', border: 'border-rose-500' },
+        { id: 'top_losers', label: '📉 弱勢跌停', color: 'text-emerald-300', bg: 'bg-emerald-900/40', border: 'border-emerald-500' },
+    ];
+
+    useEffect(() => {
+        setLastUpdated(new Date());
+        let container = containerRef.current;
+        if (container) {
+            container.innerHTML = '';
+            const script = document.createElement('script');
+            script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-screener.js';
+            script.async = true;
+            script.innerHTML = JSON.stringify({
+                "width": "100%",
+                "height": 550,
+                "defaultColumn": "overview",
+                "defaultScreen": activeFilter,
+                "market": "taiwan",
+                "showToolbar": false,
+                "colorTheme": "dark",
+                "locale": "zh_TW"
+            });
+            container.appendChild(script);
+        }
+        return () => {
+            if(container) container.innerHTML = '';
+        }
+    }, [activeFilter]);
+
+    const handleLookup = (e) => {
+        const input = e.target.value.trim();
+        setLookupCode(input);
+        if (input.length >= 2) { 
+            const upperInput = input.toUpperCase();
+            if (STOCK_NAMES[upperInput]) {
+                setLookupResult({ type: 'code', code: upperInput, name: STOCK_NAMES[upperInput] });
+                return;
+            }
+            const foundCode = Object.keys(STOCK_NAMES).find(key => STOCK_NAMES[key].includes(input));
+            if (foundCode) {
+                setLookupResult({ type: 'name', code: foundCode, name: STOCK_NAMES[foundCode] });
+                return;
+            }
+            setLookupResult({ type: 'not_found', input: input });
+        } else {
+            setLookupResult(null);
+        }
+    };
+
+    return (
+        <div className="animate-fadeIn bg-slate-800/50 border border-slate-700/50 rounded-2xl p-4 md:p-6">
+            <div className="flex flex-col gap-4 mb-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-rose-600 rounded-lg shadow-lg"><Flame className="w-6 h-6 text-white" /></div>
+                        <div>
+                            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                                台股熱門排行
+                                <span className="text-[10px] font-normal px-2 py-0.5 rounded-full bg-emerald-900/50 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 animate-pulse">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>訊號更新中
+                                </span>
+                            </h2>
+                            <p className="text-slate-400 text-xs flex items-center gap-1">
+                                <Clock className="w-3 h-3" />最後更新：{lastUpdated.toLocaleTimeString()} (資料源：TradingView)
+                            </p>
+                        </div>
+                    </div>
+                    <div className="relative group w-full md:w-auto">
+                        <div className="flex items-center gap-2 bg-slate-900/80 border border-slate-600 rounded-lg px-3 py-2 focus-within:border-blue-500 transition-colors">
+                            <Search className="w-4 h-4 text-slate-400" />
+                            <input type="text" placeholder="智能解碼：輸入 2330 或 台積電" className="bg-transparent border-none text-sm text-white placeholder-slate-500 focus:outline-none w-full md:w-64" value={lookupCode} onChange={handleLookup} />
+                        </div>
+                        {lookupResult && (
+                            <div className="absolute top-full left-0 right-0 mt-2 bg-slate-800 border border-slate-600 rounded-lg p-3 shadow-xl z-20 text-center animate-in slide-in-from-top-2">
+                                <p className="text-xs text-slate-400 mb-1">智能解碼結果</p>
+                                {lookupResult.type === 'not_found' ? (
+                                    <div className="flex flex-col gap-2">
+                                        <p className="text-sm text-slate-500">內建字典查無資料 (可能為冷門股)</p>
+                                        <a href={`https://tw.stock.yahoo.com/quote/${lookupResult.input}`} target="_blank" rel="noopener noreferrer" className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white py-1 px-2 rounded transition-colors flex items-center justify-center gap-1"><Search className="w-3 h-3" /> 前往 Yahoo 股市查詢</a>
+                                    </div>
+                                ) : (
+                                    <p className="text-lg font-bold text-white font-mono flex items-center justify-center gap-2">
+                                        <span className="bg-slate-700 px-2 rounded text-cyan-300">{lookupResult.code}</span>=<span className="text-yellow-400">{lookupResult.name}</span>
+                                    </p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <div className="flex bg-slate-900/80 p-1.5 rounded-xl border border-slate-700/50 gap-1 overflow-x-auto w-full no-scrollbar">
+                    {filters.map((filter) => (
+                        <button key={filter.id} onClick={() => setActiveFilter(filter.id)} className={`flex-1 px-4 py-3 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex items-center justify-center gap-2 ${activeFilter === filter.id ? `${filter.bg} ${filter.color} border ${filter.border} shadow-lg shadow-${filter.border.split('-')[1]}-500/20 scale-[1.02]` : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
+                            {filter.id === 'most_active' && <Activity className="w-3 h-3" />}
+                            {filter.id === 'top_gainers' && <TrendingUp className="w-3 h-3" />}
+                            {filter.id === 'top_losers' && <TrendingDown className="w-3 h-3" />}
+                            {filter.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+            <div key={activeFilter} className="bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-2xl relative min-h-[550px]" ref={containerRef}>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0"><div className="w-8 h-8 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin"></div></div>
+            </div>
+            <div className="mt-3 bg-blue-900/20 border border-blue-500/20 rounded-lg p-3 flex items-start gap-3">
+                <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-slate-400 leading-relaxed"><span className="text-blue-300 font-bold block mb-1">為什麼表格裡沒有中文股名？</span>因表格資料直接來自國際看盤軟體 (TradingView) 的即時串流，受限於瀏覽器安全規範，我們無法直接修改其內部文字。<br/>建議您善用右上角的 <span className="text-yellow-400 font-bold">智能解碼器</span>，輸入代碼或股名即可快速對照！</div>
+            </div>
+        </div>
+    );
+}
+
+const SectorLinkageRadar = ({ openChart }) => {
+    const [activeTab, setActiveTab] = useState('ai_semi');
+    const containerRef = useRef(null);
+    const tabData = {
+        'ai_semi': { 
+            title: 'AI 運算 / 晶片', 
+            symbols: [ { "proName": "NASDAQ:NVDA", "title": "NVIDIA" }, { "proName": "NYSE:TSM", "title": "台積電ADR" }, { "proName": "NASDAQ:AMD", "title": "AMD" }, { "proName": "NASDAQ:ARM", "title": "ARM" }, { "proName": "NASDAQ:INTC", "title": "Intel" } ],
+            chains: [ { id: 'foundry', name: '👑 晶圓代工', desc: 'AI 晶片製造核心 (Foundry)', tw_targets: [ {c:'2330',n:'台積電'},{c:'2303',n:'聯電'},{c:'5347',n:'世界先進'},{c:'6770',n:'力積電'} ]}, { id: 'ai_server', name: '🔥 AI 伺服器', desc: 'GB200 組裝代工 (ODM)', tw_targets: [ {c:'2317',n:'鴻海'},{c:'2382',n:'廣達'},{c:'3231',n:'緯創'},{c:'6669',n:'緯穎'},{c:'2376',n:'技嘉'},{c:'2421',n:'建準'},{c:'2354',n:'鴻準'},{c:'8210',n:'勤誠'} ]}, { id: 'ip', name: '🧠 IP 矽智財', desc: 'ASIC/ARM 架構授權', tw_targets: [ {c:'3661',n:'世芯'},{c:'3443',n:'創意'},{c:'3035',n:'智原'},{c:'6643',n:'M31'},{c:'6531',n:'愛普'},{c:'3529',n:'力旺'} ]} ]
+        },
+        'server_net': { 
+            title: '伺服器 / 網通', 
+            symbols: [ { "proName": "NASDAQ:SMCI", "title": "Supermicro" }, { "proName": "NYSE:DELL", "title": "Dell" }, { "proName": "NASDAQ:AVGO", "title": "Broadcom" }, { "proName": "NASDAQ:CSCO", "title": "Cisco" }, { "proName": "NYSE:ANET", "title": "Arista" } ],
+            chains: [ { id: 'cpo', name: '✨ CPO 矽光子', desc: '光通訊模組 (Broadcom)', tw_targets: [ {c:'3363',n:'上詮'},{c:'3450',n:'聯鈞'},{c:'3163',n:'波若威'},{c:'6451',n:'訊芯'},{c:'4979',n:'華星光'},{c:'3081',n:'聯亞'},{c:'6442',n:'光聖'},{c:'4908',n:'前鼎'} ]}, { id: 'network', name: '🌐 高速交換器', desc: '400G/800G 交換器', tw_targets: [ {c:'2345',n:'智邦'},{c:'6285',n:'啟碁'},{c:'5388',n:'中磊'},{c:'3596',n:'智易'},{c:'2419',n:'仲琦'} ]}, { id: 'thermal_liquid', name: '💧 液冷散熱', desc: 'GB200 關鍵技術 (Vertiv)', tw_targets: [ {c:'3017',n:'奇鋐'},{c:'3324',n:'雙鴻'},{c:'8996',n:'高力'},{c:'6230',n:'超眾'},{c:'3653',n:'健策'} ]}, { id: 'thermal_air', name: '💨 氣冷/風扇', desc: '伺服器散熱風扇', tw_targets: [ {c:'2421',n:'建準'},{c:'3338',n:'泰碩'},{c:'3483',n:'力致'} ]} ]
+        },
+        'pc_material': {
+            title: 'PCB / 材料',
+            symbols: [ { "proName": "NASDAQ:TTMI", "title": "TTM (PCB大廠)" }, { "proName": "NYSE:DD", "title": "DuPont (材料)" }, { "proName": "NASDAQ:AAPL", "title": "Apple (需求)" } ],
+            chains: [ { id: 'ccl', name: '🟨 CCL 銅箔基板', desc: 'AI 伺服器升級', tw_targets: [ {c:'2383',n:'台光電'},{c:'6213',n:'聯茂'},{c:'6274',n:'台燿'} ]}, { id: 'pcb', name: '🟩 PCB 載板', desc: 'HDI/ABF', tw_targets: [ {c:'2368',n:'金像電'},{c:'3037',n:'欣興'},{c:'3189',n:'景碩'},{c:'8046',n:'南電'},{c:'3044',n:'健鼎'} ]}, { id: 'chemical', name: '🧪 特用化學', desc: '台積電供應鏈', tw_targets: [ {c:'4755',n:'三福化'},{c:'1711',n:'永光'},{c:'1727',n:'中華化'},{c:'4770',n:'上品'},{c:'1773',n:'勝一'} ]} ]
+        },
+        'equipment': { 
+            title: '設備 / 機器人', 
+            symbols: [ { "proName": "NASDAQ:AMAT", "title": "應用材料" }, { "proName": "NASDAQ:LRCX", "title": "科林研發" }, { "proName": "NASDAQ:ASML", "title": "ASML" }, { "proName": "GLOBALX:BOTZ", "title": "機器人ETF" } ],
+            chains: [ { id: 'cowos', name: '🏗️ CoWoS 設備', desc: '先進封裝設備 (TSMC)', tw_targets: [ {c:'3131',n:'弘塑'},{c:'6187',n:'萬潤'},{c:'3583',n:'辛耘'},{c:'3680',n:'家登'},{c:'6196',n:'帆宣'},{c:'6640',n:'均華'},{c:'3317',n:'雷科'},{c:'5443',n:'均豪'} ]}, { id: 'robot', name: '🤖 機器人', desc: 'Tesla Optimus/BOTZ', tw_targets: [ {c:'2359',n:'所羅門'},{c:'2464',n:'盟立'},{c:'2365',n:'昆盈'},{c:'6188',n:'廣明'},{c:'8374',n:'羅昇'},{c:'4562',n:'穎漢'},{c:'8234',n:'新漢'} ]} ]
+        },
+        'memory': { 
+            title: '記憶體', 
+            symbols: [ { "proName": "NASDAQ:MU", "title": "美光" }, { "proName": "NASDAQ:WDC", "title": "WD" }, { "proName": "NASDAQ:STX", "title": "Seagate" } ],
+            chains: [ { id: 'dram', name: '💾 DRAM/NAND', desc: 'HBM 需求 (美光)', tw_targets: [ {c:'2408',n:'南亞科'},{c:'2344',n:'華邦電'},{c:'3260',n:'威剛'},{c:'4967',n:'十銓'},{c:'8299',n:'群聯'},{c:'2337',n:'旺宏'},{c:'2451',n:'創見'},{c:'8150',n:'南茂'} ]} ]
+        },
+        'power_energy': {
+            title: '重電 / 綠能 (新)',
+            symbols: [ { "proName": "NYSE:VST", "title": "Vistra (核電)" }, { "proName": "NASDAQ:CEG", "title": "Constellation" }, { "proName": "NYSE:GE", "title": "GE Vernova" } ],
+            chains: [ { id: 'power', name: '⚡ 重電/電網', desc: '美國電網更新', tw_targets: [ {c:'1513',n:'中興電'},{c:'1519',n:'華城'},{c:'1503',n:'士電'},{c:'1504',n:'東元'},{c:'1609',n:'大亞'},{c:'1605',n:'華新'} ]}, { id: 'green', name: '🍃 綠能/儲能', desc: '資料中心電力', tw_targets: [ {c:'6806',n:'森崴'},{c:'3708',n:'上緯'},{c:'9958',n:'世紀鋼'},{c:'6282',n:'康舒'} ]} ]
+        },
+        'pc_mobile': {
+            title: '邊緣 AI / 光學 (新)',
+            symbols: [ { "proName": "NASDAQ:AAPL", "title": "Apple" }, { "proName": "NYSE:DELL", "title": "Dell" }, { "proName": "NYSE:HPQ", "title": "HP" } ],
+            chains: [ { id: 'aipc', name: '💻 AI PC/NB', desc: '換機潮', tw_targets: [ {c:'2353',n:'宏碁'},{c:'2357',n:'華碩'},{c:'2324',n:'仁寶'},{c:'2382',n:'廣達'},{c:'3231',n:'緯創'} ]}, { id: 'optics', name: '📷 光學鏡頭', desc: 'Vision Pro/手機', tw_targets: [ {c:'3008',n:'大立光'},{c:'3406',n:'玉晶光'},{c:'3362',n:'先進光'},{c:'3504',n:'揚明光'} ]} ]
+        }
+    };
+    
+    const currentTabData = tabData[activeTab];
+    
+    useEffect(() => {
+        let container = containerRef.current;
+        if (!currentTabData || !container) return;
+
+        container.innerHTML = ''; 
+        const widgetDiv = document.createElement('div');
+        widgetDiv.className = 'tradingview-widget-container';
+        widgetDiv.style.width = '100%';
+        widgetDiv.style.height = '320px';
+        container.appendChild(widgetDiv);
+        const script = document.createElement('script');
+        script.src = 'https://s3.tradingview.com/external-embedding/embed-widget-market-quotes.js'; 
+        script.async = true;
+        script.innerHTML = JSON.stringify({ "width": "100%", "height": 320, "symbolsGroups": [ { "name": currentTabData.title, "symbols": currentTabData.symbols.map(s => ({ "name": s.proName, "displayName": s.title })) } ], "showSymbolLogo": true, "colorTheme": "dark", "isTransparent": true, "locale": "zh_TW" });
+        widgetDiv.appendChild(script);
+
+        return () => {
+            if(container) container.innerHTML = '';
+        }
+    }, [activeTab, currentTabData]);
+
+    if (!currentTabData) return null;
+
+    return (
+        <div className="animate-fadeIn space-y-4">
+            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-4">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-4">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-indigo-600 rounded-lg shadow-lg"><Radar className="w-5 h-5 text-white" /></div>
+                        <div><h2 className="text-xl font-bold text-white">美台產業連動戰情室</h2><p className="text-slate-400 text-xs">即時監控：上方為美股領頭羊，下方為對應台股供應鏈。</p></div>
+                    </div>
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar w-full md:w-auto pb-2">
+                        {[ { id: 'ai_semi', label: 'AI 運算', icon: <Cpu size={14} /> }, { id: 'server_net', label: '伺服器/CPO', icon: <Server size={14} /> }, { id: 'memory', label: '記憶體', icon: <CircuitBoard size={14} /> }, { id: 'equipment', label: '設備/機器人', icon: <Zap size={14} /> }, { id: 'pc_material', label: 'PCB/材料', icon: <Layers2 size={14} /> }, { id: 'power_energy', label: '重電/綠能', icon: <BatteryCharging size={14} /> }, { id: 'pc_mobile', label: '邊緣/光學', icon: <Monitor size={14} /> } ].map(tab => (
+                            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all whitespace-nowrap ${ activeTab === tab.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white border border-slate-700' }`}> {tab.icon} {tab.label} </button>
+                        ))}
+                    </div>
+                </div>
+                <div key={activeTab} ref={containerRef} className="bg-slate-900 rounded-xl overflow-hidden border border-slate-700 min-h-[320px] mb-4"></div>
+                <div className="grid grid-cols-1 gap-2">
+                        {currentTabData.chains.map((chain) => (
+                        <div key={chain.id} className="bg-slate-900/40 border border-slate-700/40 rounded-lg p-2 flex flex-col md:flex-row items-start md:items-center gap-2 hover:bg-slate-800/60 transition-colors group">
+                                <div className="md:w-32 flex-shrink-0 flex items-center gap-2 border-r border-slate-700/50 pr-2 mr-2">
+                                <div className="w-1 h-8 bg-blue-500 rounded-full"></div>
+                                <div className="flex flex-col"><span className="text-sm font-bold text-white leading-tight">{chain.name}</span><span className="text-[10px] text-slate-500">{chain.desc}</span></div>
+                                </div>
+                                <div className="flex-1 flex flex-wrap gap-1.5">
+                                    {chain.tw_targets.map((stock) => (
+                                        <button key={stock.c} onClick={() => openChart(stock.c)} className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-600 border border-slate-600 rounded px-2 py-1 transition-all group/btn" title={`查看 ${stock.n} (${stock.c}) K線圖`}>
+                                            <span className="text-white text-xs font-bold">{stock.n}</span><span className="text-[10px] text-slate-400 font-mono group-hover/btn:text-white">{stock.c}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                        </div>
+                        ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- 恢復自選監控、影音專區、風險計算機、備份中心、數據統計 ---
+const AnalystVideoWall = () => {
+    const openShorts = (analyst) => {
+        const url = analyst.customUrl || `https://www.youtube.com/results?search_query=${encodeURIComponent(analyst.query + ' shorts')}&sp=CAI%253D`;
+        const width = 500, height = 900;
+        const left = (window.screen.width - width) / 2;
+        const top = (window.screen.height - height) / 2;
+        window.open(url, analyst.name, `toolbar=no,location=no,status=no,menubar=no,scrollbars=yes,resizable=yes,width=${width},height=${height},top=${top},left=${left}`);
+    };
+    const analysts = [
+        { id: 1, name: '林睿閎分析師-John', title: '趨勢產業分析師', query: '林睿閎分析師-John', customUrl: 'https://www.youtube.com/@-john4000/shorts', desc: '擅長挖掘產業趨勢與題材股，Shorts 更新頻率高，適合短線題材追蹤。', color: 'from-fuchsia-600 to-purple-700', badgeColor: 'text-fuchsia-300 border-fuchsia-500/30 bg-fuchsia-500/10', btnColor: 'bg-gradient-to-r from-fuchsia-600 to-purple-600 hover:from-fuchsia-500 hover:to-purple-500 shadow-fuchsia-500/25', avatar: 'J' },
+        { id: 2, name: '股市豐神榜', title: '技術分析達人', query: '股市豐神榜', customUrl: 'https://www.youtube.com/@fsb688/videos', desc: '主要講解大盤籌碼與技術型態，觀點犀利直接。', color: 'from-cyan-500 to-blue-600', badgeColor: 'text-cyan-300 border-cyan-500/30 bg-cyan-500/10', btnColor: 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 shadow-cyan-500/25', avatar: 'F' },
+        { id: 3, name: '游庭皓的財經皓角', title: '總經趨勢大師', query: '游庭皓', customUrl: 'https://www.youtube.com/@yutinghaofinance', desc: '早晨直播解讀財經時事，擅長總體經濟與週期循環分析，適合掌握大局。', color: 'from-violet-600 to-indigo-700', badgeColor: 'text-violet-300 border-violet-500/30 bg-violet-500/10', btnColor: 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 shadow-violet-500/25', avatar: 'Y' }
+    ];
+    return (
+        <div className="animate-fadeIn mb-8">
+            <div className="bg-slate-900 border border-slate-700/50 rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-900/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
+                <div className="absolute bottom-0 left-0 w-64 h-64 bg-purple-900/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/3 pointer-events-none"></div>
+                <div className="flex items-center gap-4 mb-8 relative z-10">
+                    <div className="p-3 bg-gradient-to-br from-red-500 to-pink-600 rounded-xl shadow-lg shadow-pink-500/20"><Clapperboard className="w-6 h-6 text-white" /></div>
+                    <div><h2 className="text-2xl font-bold text-white tracking-wide">名師影音牆</h2><p className="text-slate-400 text-sm">每日盤勢快訊與趨勢個股追蹤</p></div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
+                    {analysts.map((item) => (
+                        <div key={item.id} className="group relative bg-slate-800/80 backdrop-blur-sm rounded-2xl overflow-hidden border border-slate-700 hover:border-slate-500 transition-all duration-300 hover:-translate-y-2 shadow-lg hover:shadow-xl flex flex-col h-full">
+                            <div className={`h-1.5 w-full bg-gradient-to-r ${item.color}`}></div>
+                            <div className="p-6 flex flex-col flex-1">
+                                <div className="flex items-center gap-4 mb-4">
+                                    <div className="relative">
+                                        <div className={`absolute inset-0 bg-gradient-to-br ${item.color} blur opacity-40 rounded-full`}></div>
+                                        <div className={`relative w-14 h-14 rounded-full bg-gradient-to-br ${item.color} flex items-center justify-center text-2xl font-bold text-white shadow-inner border border-white/10`}>{item.avatar}</div>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex-1 min-w-0">
+                                            <h3 className="font-bold text-lg text-white leading-tight truncate">{item.name}</h3>
+                                            <span className={`text-[10px] px-2 py-0.5 rounded-full mt-1.5 inline-block border ${item.badgeColor} font-medium tracking-wide`}>{item.title}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p className="text-slate-400 text-sm mb-6 line-clamp-3 leading-relaxed flex-grow">{item.desc}</p>
+                                <div className="border-t border-slate-700/50 mb-5 w-full"></div>
+                                <button onClick={() => openShorts(item)} className={`mt-auto w-full py-3.5 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all duration-300 hover:scale-[1.02] shadow-lg ${item.btnColor} btn-video-pulse relative overflow-hidden`}>
+                                    <PlayCircle className="w-5 h-5 relative z-10" /><span className="relative z-10 tracking-wide">前往觀看頻道</span>
+                                    <div className="absolute inset-0 bg-gradient-to-t from-black/10 to-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const DataManager = ({ watchlist, setWatchlist }) => {
+    const [exportText, setExportText] = useState('');
+    const [importText, setImportText] = useState('');
+    const [message, setMessage] = useState('');
+    const handleExport = () => {
+        const randomId = Math.random().toString(36).substring(2, 7).toUpperCase();
+        const data = btoa(unescape(encodeURIComponent(JSON.stringify(watchlist))));
+        const exportString = `[台股戰情室備份] ID:${randomId} | DATA:${data}`;
+        setExportText(exportString);
+        
+        try {
+            const textArea = document.createElement("textarea");
+            textArea.value = exportString;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            if (successful) {
+                    setMessage(`備份代碼 (ID: ${randomId}) 已複製！請發送給您的手機或存檔。`);
+            } else {
+                    setMessage('複製失敗，請手動複製下方代碼。');
+            }
+        } catch (err) {
+            setMessage('複製失敗，請手動複製下方代碼。');
+        }
+        setTimeout(() => setMessage(''), 5000);
+    };
+    const handleImport = () => { try { const dataPart = importText.split('DATA:')[1]; if (!dataPart) throw new Error('格式錯誤'); const jsonString = decodeURIComponent(escape(atob(dataPart.trim()))); const data = JSON.parse(jsonString); if (Array.isArray(data)) { setWatchlist(data); setMessage('成功還原自選股清單！'); setImportText(''); setTimeout(() => setMessage(''), 3000); } else { throw new Error('資料毀損'); } } catch (e) { setMessage('錯誤：無效的備份代碼，請確認複製內容是否完整。'); } };
+    return (
+        <div className="animate-fadeIn space-y-6">
+            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6 md:p-8">
+                <div className="flex items-center gap-3 mb-6"><div className="p-2 bg-slate-600 rounded-lg shadow-lg"><Settings className="w-6 h-6 text-white" /></div><div><h2 className="text-2xl font-bold text-white">數據備份中心</h2><p className="text-slate-400 text-sm">跨裝置同步設定</p></div></div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="bg-slate-900/50 rounded-xl p-6 border border-slate-700"><h3 className="text-lg font-bold text-blue-400 mb-4 flex items-center gap-2"><Upload className="w-5 h-5" /> 匯出 / 備份</h3><p className="text-sm text-slate-400 mb-4">點擊按鈕複製您的自選股代碼。</p><button onClick={handleExport} className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-colors mb-4"><Copy className="w-4 h-4" /> 產生並複製備份碼</button>{exportText && (<div className="bg-black/30 p-3 rounded text-xs text-slate-400 break-all font-mono border border-slate-700/50 h-24 overflow-y-auto">{exportText}</div>)}</div>
+                    <div className="bg-slate-900/50 rounded-xl p-6 border border-slate-700"><h3 className="text-lg font-bold text-emerald-400 mb-4 flex items-center gap-2"><Download className="w-5 h-5" /> 匯入 / 還原</h3><p className="text-sm text-slate-400 mb-4">在下方貼上備份代碼。</p><textarea value={importText} onChange={(e) => setImportText(e.target.value)} placeholder="在此貼上備份代碼..." className="w-full h-24 bg-slate-800 border border-slate-600 rounded-lg p-3 text-white text-sm focus:outline-none focus:border-emerald-500 mb-4 font-mono"></textarea><button onClick={handleImport} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-colors"><CheckCircle2 className="w-4 h-4" /> 執行匯入</button></div></div>
+                {message && (<div className="mt-4 p-4 bg-slate-700/80 text-white text-center rounded-lg animate-pulse shadow-lg border border-slate-500">{message}</div>)}
+            </div>
+        </div>
+    );
+};
+
+const UsageStats = ({ stats, linkTitleMap }) => {
+    const topLinks = Object.entries(stats.linkClicks).sort(([, a], [, b]) => b - a).slice(0, 10);
+    const topStocks = Object.entries(stats.stockQueries).sort(([, a], [, b]) => b - a).slice(0, 10);
+    return (
+        <div className="animate-fadeIn space-y-8">
+            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6 md:p-8">
+                <div className="flex items-center gap-3 mb-6">
+                    <div className="p-2 bg-indigo-600 rounded-lg shadow-lg"><BarChart3 className="w-6 h-6 text-white" /></div>
+                    <div><h2 className="text-2xl font-bold text-white">個人使用統計</h2><p className="text-slate-400 text-sm">追蹤您的分析習慣與關注焦點 (資料僅儲存於本機)</p></div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="bg-slate-900/50 rounded-xl p-6 border border-slate-700">
+                        <h3 className="text-lg font-bold text-indigo-400 mb-4 flex items-center gap-2"><Trophy className="w-5 h-5" />最常使用的報表</h3>
+                        {topLinks.length > 0 ? (
+                            <ul className="space-y-3">{topLinks.map(([id, count], index) => (
+                                <li key={id} className="flex items-center justify-between p-3 bg-slate-800 rounded-lg border border-slate-700/50 hover:bg-slate-750 transition-colors">
+                                    <div className="flex items-center gap-3">
+                                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${index < 3 ? 'bg-yellow-500 text-black' : 'bg-slate-700 text-slate-400'}`}>{index + 1}</span>
+                                        <span className="text-slate-200 text-sm font-medium">{linkTitleMap[id] || `報表 #${id}`}</span>
+                                    </div>
+                                    <span className="text-xs font-mono text-indigo-300 bg-indigo-900/30 px-2 py-1 rounded">{count} 次</span>
+                                </li>
+                            ))}</ul>
+                        ) : (<div className="text-center py-10"><Activity className="w-12 h-12 text-slate-700 mx-auto mb-3" /><p className="text-slate-500">尚無點擊紀錄，快去探索報表吧！</p></div>)}
+                    </div>
+                    <div className="bg-slate-900/50 rounded-xl p-6 border border-slate-700">
+                        <h3 className="text-lg font-bold text-rose-400 mb-4 flex items-center gap-2"><Flame className="w-5 h-5" />最常關注的股票</h3>
+                        {topStocks.length > 0 ? (
+                            <ul className="space-y-3">{topStocks.map(([code, count], index) => {
+                                const maxCount = Math.max(...Object.values(stats.stockQueries));
+                                const percentage = (count / maxCount) * 100;
+                                return (
+                                    <li key={code} className="flex items-center justify-between p-3 bg-slate-800 rounded-lg border border-slate-700/50 hover:bg-slate-750 transition-colors">
+                                        <div className="flex items-center gap-3">
+                                            <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${index < 3 ? 'bg-rose-500 text-white' : 'bg-slate-700 text-slate-400'}`}>{index + 1}</span>
+                                            <div className="flex flex-col">
+                                                <span className="text-white text-lg font-bold font-mono tracking-wider leading-none">{code}</span>
+                                                {STOCK_NAMES[code] && (<span className="text-xs text-slate-400 font-normal mt-0.5">{STOCK_NAMES[code]}</span>)}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="h-1.5 w-24 bg-slate-700 rounded-full overflow-hidden hidden sm:block"><div className="h-full bg-rose-500 rounded-full transition-all duration-500" style={{ width: `${percentage}%` }}></div></div>
+                                            <span className="text-xs font-mono text-rose-300 min-w-[40px] text-right bg-rose-900/30 px-2 py-1 rounded">{count} 次</span>
+                                        </div>
+                                    </li>
+                                );
+                            })}</ul>
+                        ) : (<div className="text-center py-10"><Search className="w-12 h-12 text-slate-700 mx-auto mb-3" /><p className="text-slate-500">尚無搜尋紀錄，輸入代碼開始分析！</p></div>)}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const WatchlistDashboard = ({ watchlist, setWatchlist, openChart }) => {
+    const [inputCode, setInputCode] = useState('');
+    const [activeFilter, setActiveFilter] = useState('all');
+    
+    const addStock = (e) => {
+        e.preventDefault();
+        const code = inputCode.trim();
+        if (code && !watchlist.includes(code)) {
+            setWatchlist([...watchlist, code]);
+            setInputCode('');
+        }
+    };
+    const removeStock = (code) => { setWatchlist(watchlist.filter(c => c !== code)); };
+    const getTheme = (code) => STOCK_THEMES[code] || '一般產業';
+    const getThemeStyle = (theme) => {
+        if (theme.includes('AI') || theme.includes('伺服器') || theme.includes('散熱') || theme.includes('IP')) return 'bg-purple-900/40 text-purple-300 border-purple-500/30 shadow-[0_0_10px_rgba(168,85,247,0.15)]';
+        if (theme.includes('半導體') || theme.includes('CoWoS') || theme.includes('IC') || theme.includes('晶圓') || theme.includes('工程') || theme.includes('設備')) return 'bg-blue-900/40 text-blue-300 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.15)]';
+        if (theme.includes('重電') || theme.includes('綠能') || theme.includes('電纜') || theme.includes('變壓器') || theme.includes('風電')) return 'bg-emerald-900/40 text-emerald-300 border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.15)]';
+        if (theme.includes('網通') || theme.includes('CPO') || theme.includes('光') || theme.includes('通訊')) return 'bg-cyan-900/40 text-cyan-300 border-cyan-500/30 shadow-[0_0_10px_rgba(6,182,212,0.15)]';
+        if (theme.includes('航運') || theme.includes('軍工') || theme.includes('航太')) return 'bg-orange-900/40 text-orange-300 border-orange-500/30 shadow-[0_0_10px_rgba(249,115,22,0.15)]';
+        if (theme.includes('生技') || theme.includes('藥') || theme.includes('醫')) return 'bg-rose-900/40 text-rose-300 border-rose-500/30 shadow-[0_0_10px_rgba(244,63,94,0.15)]';
+        if (theme.includes('ETF') || theme.includes('金控') || theme.includes('銀行')) return 'bg-yellow-900/40 text-yellow-300 border-yellow-500/30 shadow-[0_0_10px_rgba(234,179,8,0.15)]';
+        return 'bg-slate-700/50 text-slate-300 border-slate-600/50';
+    };
+    const filterCategories = [
+        { id: 'all', label: '全部' },
+        { id: 'ai', label: 'AI / 散熱', keywords: ['AI', '伺服器', '散熱', 'IP', '電腦', '機殼', '組裝', '板卡'] },
+        { id: 'semi', label: '半導體 / 設備', keywords: ['半導體', 'CoWoS', 'IC', '晶圓', '封測', '工程', '設備', '記憶體', '材料', '測試', '探針'] },
+        { id: 'power', label: '重電 / 綠能', keywords: ['重電', '綠能', '電纜', '變壓器', '風電', '太陽能', '儲能', '馬達', '開關'] },
+        { id: 'comm', label: '網通 / CPO', keywords: ['網通', 'CPO', '光', '通訊', '交換器', '寬頻'] },
+        { id: 'old', label: '傳產 / 航運', keywords: ['航運', '軍工', '航太', '鋼鐵', '塑化', '紡織', '水泥', '營建', '自行車', '鞋', '超商', '汽車'] },
+        { id: 'finance', label: '金融 / ETF', keywords: ['金控', '銀行', '壽險', 'ETF', '債', '證', '租賃'] },
+        { id: 'bio', label: '生技', keywords: ['生技', '藥', '醫'] }
+    ];
+    const filteredWatchlist = watchlist.filter(code => {
+        if (activeFilter === 'all') return true;
+        const theme = getTheme(code);
+        const category = filterCategories.find(c => c.id === activeFilter);
+        if (!category) return false;
+        return category.keywords.some(k => theme.includes(k));
+    });
+    const getCategoryCount = (categoryId, keywords) => {
+        if (categoryId === 'all') return watchlist.length;
+        return watchlist.filter(code => {
+            const theme = getTheme(code);
+            return keywords.some(k => theme.includes(k));
+        }).length;
+    };
+    return (
+        <div className="animate-fadeIn space-y-6">
+            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6 md:p-8">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                        <div className="p-2 bg-emerald-600 rounded-lg shadow-lg shrink-0"><ListChecks className="w-6 h-6 text-white" /></div>
+                        <div><h2 className="text-2xl font-bold text-white">智能自選戰情室</h2><p className="text-slate-400 text-sm hidden md:block">您的個人化產業地圖 (本機儲存)</p></div>
+                    </div>
+                    <form onSubmit={addStock} className="flex gap-2 w-full md:w-auto">
+                        <input type="text" value={inputCode} onChange={(e) => setInputCode(e.target.value)} placeholder="輸入代碼加入自選..." className="px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-emerald-500 w-full md:w-48 placeholder-slate-500" />
+                        <button type="submit" className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg flex items-center gap-1 transition-colors whitespace-nowrap shadow-md shadow-emerald-900/20"><Plus className="w-4 h-4" /> 加入</button>
+                    </form>
+                </div>
+                {watchlist.length > 0 && (
+                    <div className="flex overflow-x-auto pb-4 gap-2 mb-2 no-scrollbar">
+                        {filterCategories.map(cat => {
+                            const count = getCategoryCount(cat.id, cat.keywords);
+                            const isActive = activeFilter === cat.id;
+                            return (
+                                <button key={cat.id} onClick={() => setActiveFilter(cat.id)} className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap border ${isActive ? 'bg-emerald-600 text-white border-emerald-500 shadow-lg shadow-emerald-600/25' : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700 hover:text-slate-200'} ${count === 0 && cat.id !== 'all' ? 'opacity-50 grayscale' : ''}`}>
+                                    {cat.label}<span className={`text-xs px-1.5 py-0.5 rounded-full ${isActive ? 'bg-white/20 text-white' : 'bg-slate-900 text-slate-500'}`}>{count}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+                {filteredWatchlist.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {filteredWatchlist.map(code => {
+                            const theme = getTheme(code);
+                            const themeStyle = getThemeStyle(theme);
+                            return (
+                                <div key={code} className="bg-slate-900 border border-slate-700 rounded-xl p-4 hover:border-emerald-500/50 transition-all hover:shadow-lg group relative animate-fadeIn">
+                                    <button onClick={(e) => { e.stopPropagation(); removeStock(code); }} className="absolute top-3 right-3 text-slate-600 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 p-1" title="移除"><Trash2 className="w-4 h-4" /></button>
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div><span className="text-2xl font-bold text-white font-mono tracking-wide block">{code}</span><span className="text-sm text-slate-400 font-medium">{STOCK_NAMES[code] || '自選個股'}</span></div>
+                                    </div>
+                                    <div className="mb-4"><div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold tracking-wide w-full justify-center ${themeStyle}`}><Flame className="w-3 h-3" />{theme}</div></div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <button onClick={() => openChart(code)} className="py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors border border-slate-700 hover:border-slate-500"><Activity className="w-4 h-4" /> K 線分析</button>
+                                        <button onClick={() => window.open(`https://www.peicheng.com.tw/asp/stockquery/${code}.htm`, '_blank')} className="py-2 bg-emerald-900/30 hover:bg-emerald-900/50 text-emerald-400 border border-emerald-900/50 rounded-lg text-sm flex items-center justify-center gap-2 transition-colors"><Search className="w-4 h-4" /> 夢幻報表</button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : (
+                    <div className="text-center py-16 border-2 border-dashed border-slate-700 rounded-xl bg-slate-900/30">
+                        <ListChecks className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+                        <h3 className="text-xl font-bold text-white mb-2">{activeFilter === 'all' ? '您的自選清單是空的' : '此分類尚無自選股'}</h3>
+                        <p className="text-slate-400">{activeFilter === 'all' ? '請在上方輸入代碼，開始打造您的專屬戰情室！' : '請切換分類或新增相關個股。'}</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default function App() {
+    const [activeCategory, setActiveCategory] = useState('all'); 
+    const [stockCode, setStockCode] = useState('');
+    const [chartSymbol, setChartSymbol] = useState(null);
+    
+    // Auto-load Marked.js safely
+    useEffect(() => {
+        if (!window.marked && !document.querySelector('script[src*="marked.min.js"]')) {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+            script.async = true;
+            document.head.appendChild(script);
+        }
+    }, []);
+
+    const [stats, setStats] = useState(() => {
+        try {
+            const saved = localStorage.getItem('stock_analysis_stats');
+            return saved ? JSON.parse(saved) : { linkClicks: {}, stockQueries: {} };
+        } catch (e) { return { linkClicks: {}, stockQueries: {} }; }
+    });
+
+    const [watchlist, setWatchlist] = useState(() => {
+        try {
+            const saved = localStorage.getItem('stock_analysis_watchlist');
+            const parsed = saved ? JSON.parse(saved) : [];
+            // 防呆機制：確保讀取的一定是陣列
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (e) { 
+            console.error("Watchlist load error:", e);
+            return []; 
+        }
+    });
+
+    useEffect(() => { localStorage.setItem('stock_analysis_watchlist', JSON.stringify(watchlist)); }, [watchlist]);
+    useEffect(() => { localStorage.setItem('stock_analysis_stats', JSON.stringify(stats)); }, [stats]);
+
+    const trackStockQuery = (code) => { setStats(prev => ({ ...prev, stockQueries: { ...prev.stockQueries, [code]: (prev.stockQueries[code] || 0) + 1 } })); };
+    const trackLinkClick = (id) => { setStats(prev => ({ ...prev, linkClicks: { ...prev.linkClicks, [id]: (prev.linkClicks[id] || 0) + 1 } })); };
+
+    const handleSearch = (e) => {
+        e.preventDefault();
+        const cleanCode = stockCode.trim();
+        if (cleanCode) {
+            setChartSymbol(cleanCode);
+            trackStockQuery(cleanCode);
+        }
+    };
+
+    const openChartFromWatchlist = (code) => {
+        setChartSymbol(code);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const closeChart = () => {
+        setChartSymbol(null);
+        setStockCode('');
+    };
+
+    const addToWatchlist = (code) => {
+        if (code && !watchlist.includes(code)) {
+            setWatchlist(prev => [...prev, code]);
+            alert(`已將 ${code} 加入自選監控！`);
+        } else {
+            alert(`${code} 已在自選清單中。`);
+        }
+    };
+
+    const personalFavoriteIds = [103, 107, 1, 2, 101, 106];
+    const links = useMemo(() => LINKS_DATA, []);
+    const linkTitleMap = useMemo(() => links.reduce((acc, link) => { acc[link.id] = link.title; return acc; }, {}), [links]);
+
+    let filteredLinks;
+    if (activeCategory === 'all') { 
+        filteredLinks = links; 
+    } else if (activeCategory === 'favorites') { 
+        filteredLinks = personalFavoriteIds.map(id => links.find(link => link.id === id)).filter(item => item !== undefined); 
+    } else { 
+        filteredLinks = links.filter(link => link.category === activeCategory); 
+    }
+
+    return (
+        <div className="min-h-screen bg-slate-900 text-slate-100 font-sans p-4 md:p-8 flex flex-col">
+            <GlobalStyles />
+            <div className="w-full">
+                <TradingViewTicker />
+            </div>
+            <div className="flex-1 w-full max-w-[96%] mx-auto mt-8">
+                <header className="mb-8 border-b border-slate-700 pb-6 flex flex-col md:flex-row justify-between items-center md:items-end gap-6">
+                    <div className="text-center md:text-left">
+                        <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent mb-2">台股分析 隱藏報表戰情室</h1>
+                        <p className="text-slate-400">JAMES 個人愛用整合籌碼、法人與技術分析的快速啟動中心 <span className="text-xs text-yellow-500 border border-yellow-500/30 px-1 rounded ml-1">PRO+</span></p>
+                    </div>
+                    <MarketClock />
+                </header>
+
+                <div className="mb-10 bg-gradient-to-r from-slate-800 to-slate-800/50 p-6 rounded-2xl border border-blue-500/30 shadow-lg shadow-blue-900/10">
+                    <div className="flex flex-col md:flex-row items-start gap-4">
+                        <div className="flex items-center gap-3 text-blue-300 min-w-fit h-12"><Zap className="w-6 h-6" /><span className="font-bold text-lg">技術戰情控制台</span></div>
+                        <div className="flex-1 w-full">
+                            <form onSubmit={handleSearch} className="flex gap-2">
+                                <div className="relative flex-1 flex gap-2"><input type="text" value={stockCode} onChange={(e) => setStockCode(e.target.value)} placeholder="輸入代碼 (例: 2330)" className="flex-1 w-full px-4 py-3 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono tracking-wider" /></div>
+                                <button type="submit" className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg transition-colors whitespace-nowrap shadow-md hover:shadow-blue-500/25 flex items-center gap-2"><MousePointerClick className="w-4 h-4" />啟動分析</button>
+                            </form>
+                            <p className="text-slate-500 text-xs mt-2 ml-1">* 小撇步：輸入代碼後，控制台將顯示「HiStock / 玩股網 / Yahoo 」的快速啟動按鈕。點擊後會以「獨立懸浮視窗」開啟，不會跳出本頁面。</p>
+                        </div>
+                    </div>
+                </div>
+
+                {chartSymbol && <ChartLauncher symbol={chartSymbol} onClose={closeChart} />}
+                <AIAssistant />
+
+                <div className="flex flex-wrap gap-2 mb-8 justify-center md:justify-start">
+                    {[ { id: 'all', label: '全部顯示' }, 
+                    { id: 'favorites', label: '個人愛用', icon: <Star size={16} className="inline mr-1 text-yellow-400 fill-yellow-400/20" /> },
+                    { id: 'market_info', label: '市場即時', icon: <Signal size={16} className="inline mr-1" /> }, 
+                    { id: 'watchlist', label: '自選監控', icon: <ListChecks size={16} className="inline mr-1 text-emerald-400" /> },
+                    { id: 'sentiment', label: '大盤多空', icon: <ThermometerSun size={16} className="inline mr-1 text-orange-400" /> },
+                    { id: 'live_quant', label: 'AI 量化雷達 (v6.0)', icon: <ScanLine size={16} className="inline mr-1 text-cyan-400" /> },
+                    { id: 'theme_hunter', label: 'Alpha 題材獵手', icon: <Crosshair size={16} className="inline mr-1 text-red-400" /> },
+                    { id: 'video_wall', label: '影音專區', icon: <Youtube size={16} className="inline mr-1 text-red-500" /> }, 
+                    { id: 'tw_hot_rank', label: '台股熱門排行', icon: <Flame size={16} className="inline mr-1 text-rose-400" /> }, 
+                    { id: 'us_sector_radar', label: '美台產業連動', icon: <Radar size={16} className="inline mr-1 text-blue-400" /> },
+                    { id: 'chips', label: '籌碼集中' }, 
+                    { id: 'institutional', label: '法人動向' }, 
+                    { id: 'tech', label: '技術策略' }, 
+                    { id: 'fundamental', label: '基本面' }, 
+                    { id: 'knowledge', label: '指標小百科', icon: <GraduationCap size={16} className="inline mr-1" /> }, 
+                    { id: 'statistics', label: '數據統計', icon: <BarChart3 size={16} className="inline mr-1 text-indigo-400" /> }, 
+                    { id: 'data_manage', label: '系統設定', icon: <Settings size={16} className="inline mr-1 text-slate-400" /> } 
+                    ].map((tab) => (
+                        <button key={tab.id} onClick={() => setActiveCategory(tab.id)} className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 flex items-center ${activeCategory === tab.id ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/25' : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'}`}>{tab.icon}{tab.label}</button>
+                    ))}
+                </div>
+
+                {/* 根據 activeCategory 顯示內容 */}
+                {activeCategory === 'theme_hunter' ? (<AlphaHunterPro openChart={openChartFromWatchlist} />) : 
+                activeCategory === 'watchlist' ? (<WatchlistDashboard watchlist={watchlist} setWatchlist={setWatchlist} openChart={openChartFromWatchlist} />) : 
+                activeCategory === 'live_quant' ? (<LiveQuantScanner openChart={openChartFromWatchlist} addToWatchlist={addToWatchlist} />) :
+                activeCategory === 'video_wall' ? (<AnalystVideoWall />) : 
+                activeCategory === 'statistics' ? (<UsageStats stats={stats} linkTitleMap={linkTitleMap} />) : 
+                activeCategory === 'data_manage' ? (<DataManager watchlist={watchlist} setWatchlist={setWatchlist} />) :
+                activeCategory === 'tw_hot_rank' ? (<TWHotLists />) : 
+                activeCategory === 'us_sector_radar' ? (<SectorLinkageRadar openChart={openChartFromWatchlist} />) : 
+                activeCategory === 'sentiment' ? (<MarketSentimentGauge />) :
+                (
+                    <div className="space-y-12">
+                        {activeCategory === 'knowledge' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fadeIn mb-8">
+                                <div className="md:col-span-2 bg-gradient-to-r from-blue-900/30 to-purple-900/30 p-6 rounded-xl border border-blue-500/20 mb-2">
+                                    <div className="flex items-center gap-3 mb-2 text-blue-300"><BookOpen className="w-6 h-6" /><h2 className="text-2xl font-bold">股市解讀指南</h2></div>
+                                    <p className="text-slate-300">整理了報表中常見的專業術語，幫助您快速看懂「綜合評分」與「市場數據」背後的意義。</p>
+                                </div>
+                                {KNOWLEDGE_ITEMS.map((item, index) => (
+                                    <div key={index} className="bg-slate-800 rounded-xl p-6 border border-slate-700 hover:border-pink-500/30 transition-all shadow-lg">
+                                        <div className="flex items-start gap-4 mb-4">
+                                            <div className="p-3 bg-slate-900 rounded-lg shadow-inner">{item.icon}</div>
+                                            <div><h3 className="text-xl font-bold text-white mb-1">{item.title}</h3><p className="text-pink-300 font-medium text-sm">{item.summary}</p></div>
+                                        </div>
+                                        <ul className="space-y-2">{item.details.map((detail, idx) => (<li key={idx} className="flex items-start gap-2 text-slate-400 text-sm"><span className="w-1.5 h-1.5 bg-slate-600 rounded-full mt-1.5 flex-shrink-0" /><span>{detail}</span></li>))}</ul>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {(activeCategory === 'fundamental' || activeCategory === 'all') && (
+                            <div className="bg-amber-900/20 border border-amber-600/30 p-4 rounded-xl flex items-start gap-3">
+                                <CalendarClock className="w-6 h-6 text-amber-500 flex-shrink-0 mt-1" />
+                                <div><h3 className="text-amber-400 font-bold text-sm mb-1">關於「最新數據」的說明</h3><p className="text-slate-300 text-xs leading-relaxed">官方季報資料若停在 11 月屬正常現象（因 Q4 財報尚未出爐）。<br/>若要看最新的 <span className="text-white font-bold">12月營收</span>，請點選下方標示為 <span className="text-rose-400 font-bold">Goodinfo</span> 的外部資源，它提供台股最即時的營收更新。</p></div>
+                            </div>
+                        )}
+                        
+                        {activeCategory !== 'knowledge' && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {filteredLinks.map((link) => (
+                                    <div key={link.id} onClick={(e) => { e.stopPropagation(); trackLinkClick(link.id); window.open(link.url, '_blank'); }} className={`group rounded-xl p-6 border transition-all duration-300 hover:-translate-y-1 shadow-xl relative overflow-hidden cursor-pointer ${link.tag?.includes('外部資源') ? 'bg-slate-800/80 border-rose-500/30 hover:border-rose-500 hover:bg-slate-800' : link.category === 'market_info' ? 'bg-slate-800 border-indigo-500/30 hover:border-indigo-400 hover:bg-slate-800/90' : 'bg-slate-800 border-slate-700 hover:border-blue-500/50 hover:bg-slate-800/80'}`}>
+                                            {link.tag?.includes('外部資源') && (<div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-bl from-rose-500/20 to-transparent rounded-bl-full pointer-events-none" />)}
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div className="p-3 bg-slate-900 rounded-lg group-hover:scale-110 transition-transform duration-300">{link.icon}</div>
+                                                {link.tag && (<span className={`px-2 py-1 text-xs rounded border ${link.tag.includes('外部資源') ? 'bg-rose-900/30 text-rose-300 border-rose-800 font-bold animate-pulse-slow' : link.category === 'market_info' ? 'bg-indigo-900/30 text-indigo-300 border-indigo-800' : link.tag === '價值投資' || link.tag === '官方季報' ? 'bg-cyan-900/30 text-cyan-300 border-cyan-800' : 'bg-slate-700 text-blue-300 border-slate-600'}`}>{link.tag}</span>)}
+                                            </div>
+                                            <h3 className="text-xl font-bold text-white mb-2 group-hover:text-blue-400 transition-colors">{link.title}</h3>
+                                            <p className="text-slate-400 text-sm mb-6 leading-relaxed h-16 overflow-hidden">{link.description}</p>
+                                            <a href={link.url} target="_blank" rel="noopener noreferrer" onClick={(e) => { e.stopPropagation(); trackLinkClick(link.id); }} className={`flex items-center justify-center w-full py-3 text-white rounded-lg font-medium transition-colors gap-2 ${link.tag?.includes('外部資源') ? 'bg-rose-600 hover:bg-rose-500' : link.category === 'market_info' ? 'bg-indigo-600 hover:bg-indigo-500' : 'bg-blue-600 hover:bg-blue-500'}`}><span>開啟報表</span><ExternalLink size={16} /></a>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {activeCategory === 'fundamental' && (
+                            <div className="animate-fadeIn mt-8">
+                                <div className="flex items-center gap-2 mb-6 border-b border-slate-700 pb-2"><ClipboardList className="w-6 h-6 text-cyan-400" /><h2 className="text-xl font-bold text-cyan-400">基本面關鍵指標解析</h2><span className="text-slate-500 text-sm ml-2">- 價值投資人必備辭典</span></div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">{FUNDAMENTAL_TERMS.map((term, index) => (<div key={index} className="bg-slate-800/60 p-5 rounded-lg border border-slate-700/50 hover:bg-slate-800 transition-colors"><div className="flex items-center gap-2 mb-2">{term.icon}<h3 className="font-bold text-white text-base">{term.title}</h3></div><p className="text-xs text-cyan-300 mb-2 font-medium">{term.sub}</p><p className="text-slate-400 text-sm leading-relaxed">{term.desc}</p></div>))}</div>
+                            </div>
+                        )}
+                    </div>
+                )}
+                
+                <div className="mt-12 bg-slate-800/50 rounded-xl p-6 border border-slate-700/50">
+                    <div className="flex items-center gap-2 mb-4 text-emerald-400"><Info size={20} /><h3 className="font-bold">分析建議流程</h3></div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-300">
+                        <div className="bg-slate-900/50 p-4 rounded-lg"><span className="text-blue-400 font-bold block mb-1">Step 1. 盤前快篩</span>瀏覽 <span className="text-white">名師影音牆</span> 掌握最新趨勢，並利用 <span className="text-white">完整技術分析</span> 對關注個股進行快速健診。</div>
+                        <div className="bg-slate-900/50 p-4 rounded-lg"><span className="text-blue-400 font-bold block mb-1">Step 2. 盤後籌碼</span>收盤後檢查 <span className="text-white">籌碼集中度</span> 與 <span className="text-white">法人買賣超</span>，確認主力大戶資金是否進駐。</div>
+                        <div className="bg-slate-900/50 p-4 rounded-lg"><span className="text-blue-400 font-bold block mb-1">Step 3. 資金策略</span>觀察 <span className="text-white">成交量排行</span> 與 <span className="text-white">多空選股</span> 清單，找出市場熱錢流向，擬定操作策略。</div>
+                    </div>
+                </div>
+                
+                <footer className="mt-12 text-center text-slate-500 text-sm"><p>此網站為連結整合工具，不具備商業性質，僅供我使用。</p></footer>
+            </div>
+        </div>
+    );
+}
